@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PageSearch } from "./page-search";
+import { DashboardClient } from "./dashboard-client";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", active: true },
@@ -9,72 +9,7 @@ const navItems = [
   { label: "AI Tools", href: "#", active: false },
 ];
 
-const engagementByDay = [
-  42, 38, 55, 48, 62, 58, 71, 65, 78, 72, 85, 80, 76, 88, 92, 86, 94, 90,
-  98, 95, 102, 88, 91, 105, 110, 98, 115, 108, 120, 118,
-];
-
-const outlierPosts = [
-  {
-    type: "Video",
-    preview: "3 hooks that doubled our reach in 48 hours…",
-    multiplier: "8.4x",
-    engagement: "142K",
-  },
-  {
-    type: "Reel",
-    preview: "POV: you spot the trend before your competitors",
-    multiplier: "6.2x",
-    engagement: "98K",
-  },
-  {
-    type: "Image",
-    preview: "Weekly viral score breakdown — May edition",
-    multiplier: "5.1x",
-    engagement: "76K",
-  },
-  {
-    type: "Carousel",
-    preview: "5 posting windows that outperform the algorithm",
-    multiplier: "4.7x",
-    engagement: "61K",
-  },
-  {
-    type: "Video",
-    preview: "Behind the scenes: how we forecast outliers",
-    multiplier: "4.2x",
-    engagement: "54K",
-  },
-];
-
-const statCards = [
-  {
-    label: "Followers",
-    value: "284.2K",
-    change: "+12.4%",
-    positive: true,
-  },
-  {
-    label: "Engagement Rate",
-    value: "4.8%",
-    change: "+0.6%",
-    positive: true,
-  },
-  {
-    label: "Posts This Month",
-    value: "24",
-    change: "+3",
-    positive: true,
-  },
-  {
-    label: "Outlier Posts",
-    value: "7",
-    change: "+2",
-    positive: true,
-  },
-];
-
-function PageLogo({ compact = false }: { compact?: boolean }) {
+function PageLogo() {
   return (
     <Link href="/" className="flex items-center gap-2.5">
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-md shadow-blue-600/25">
@@ -92,21 +27,16 @@ function PageLogo({ compact = false }: { compact?: boolean }) {
           />
         </svg>
       </span>
-      {!compact && (
-        <span className="text-lg font-bold tracking-tight text-slate-900">
-          Page<span className="text-blue-600">IQ</span>
-        </span>
-      )}
+      <span className="text-lg font-bold tracking-tight text-slate-900">
+        Page<span className="text-blue-600">IQ</span>
+      </span>
     </Link>
   );
 }
 
 export default function DashboardPage() {
-  const maxEngagement = Math.max(...engagementByDay);
-
   return (
     <div className="flex min-h-full bg-slate-50 font-sans text-slate-900">
-      {/* Sidebar */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-blue-100 bg-white">
         <div className="border-b border-blue-100 px-5 py-5">
           <PageLogo />
@@ -141,171 +71,8 @@ export default function DashboardPage() {
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top bar */}
-        <header className="border-b border-blue-100 bg-white px-6 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="shrink-0">
-              <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
-              <p className="text-sm text-slate-500">
-                Facebook analytics · TechFlow Media
-              </p>
-            </div>
-            <PageSearch />
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto p-6">
-          {/* Stat cards */}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {statCards.map((stat) => (
-              <article
-                key={stat.label}
-                className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm"
-              >
-                <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-                <p className="mt-2 text-3xl font-bold text-slate-900">
-                  {stat.value}
-                </p>
-                <p
-                  className={`mt-2 text-sm font-medium ${
-                    stat.positive ? "text-emerald-600" : "text-red-600"
-                  }`}
-                >
-                  {stat.change} vs last month
-                </p>
-              </article>
-            ))}
-          </div>
-
-          <div className="mt-6 grid gap-6 xl:grid-cols-5">
-            {/* Bar chart */}
-            <section className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm xl:col-span-3">
-              <div className="mb-6 flex items-start justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">
-                    Engagement over 30 days
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Daily engagement score across all posts
-                  </p>
-                </div>
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  Last 30 days
-                </span>
-              </div>
-
-              <div className="flex h-48 items-end gap-1">
-                {engagementByDay.map((value, i) => (
-                  <div
-                    key={i}
-                    className="group relative flex-1"
-                    title={`Day ${i + 1}: ${value}`}
-                  >
-                    <div
-                      className="w-full rounded-t-sm bg-gradient-to-t from-blue-600 to-blue-400 opacity-90 transition group-hover:opacity-100"
-                      style={{ height: `${(value / maxEngagement) * 100}%` }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-3 flex justify-between text-xs text-slate-400">
-                <span>Day 1</span>
-                <span>Day 15</span>
-                <span>Day 30</span>
-              </div>
-            </section>
-
-            {/* Quick summary */}
-            <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-600 to-blue-700 p-6 text-white shadow-lg shadow-blue-600/20 xl:col-span-2">
-              <h2 className="text-lg font-semibold">Page health</h2>
-              <p className="mt-2 text-sm text-blue-100">
-                Your Facebook page is outperforming 82% of similar pages in your
-                niche.
-              </p>
-              <div className="mt-6 space-y-4">
-                {[
-                  { label: "Reach", value: 92 },
-                  { label: "Shares", value: 78 },
-                  { label: "Comments", value: 85 },
-                ].map((metric) => (
-                  <div key={metric.label}>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span className="text-blue-100">{metric.label}</span>
-                      <span className="font-semibold">{metric.value}%</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-blue-500/40">
-                      <div
-                        className="h-full rounded-full bg-white"
-                        style={{ width: `${metric.value}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          {/* Outlier posts table */}
-          <section className="mt-6 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
-            <div className="border-b border-blue-100 px-6 py-4">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Top outlier posts
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Posts performing significantly above your page average
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/80">
-                    <th className="px-6 py-3 font-semibold text-slate-600">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 font-semibold text-slate-600">
-                      Post preview
-                    </th>
-                    <th className="px-6 py-3 font-semibold text-slate-600">
-                      Multiplier
-                    </th>
-                    <th className="px-6 py-3 font-semibold text-slate-600">
-                      Engagement
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {outlierPosts.map((post, i) => (
-                    <tr
-                      key={i}
-                      className="border-b border-slate-50 transition hover:bg-blue-50/40"
-                    >
-                      <td className="px-6 py-4">
-                        <span className="inline-flex rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                          {post.type}
-                        </span>
-                      </td>
-                      <td className="max-w-xs px-6 py-4 text-slate-700">
-                        <p className="truncate">{post.preview}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="font-semibold text-emerald-600">
-                          {post.multiplier}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-slate-900">
-                        {post.engagement}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </main>
+        <DashboardClient />
       </div>
     </div>
   );
