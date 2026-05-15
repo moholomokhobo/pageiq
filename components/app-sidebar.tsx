@@ -11,7 +11,7 @@ const navItems: { label: NavLabel; href: string }[] = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Discover", href: "#" },
   { label: "Watchlist", href: "/watchlist" },
-  { label: "Compare", href: "#" },
+  { label: "Compare", href: "/compare" },
   { label: "AI Tools", href: "#" },
 ];
 
