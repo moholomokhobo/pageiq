@@ -5,6 +5,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function GET(request: Request) {
+  console.log(
+    "API KEY EXISTS:",
+    Boolean(process.env.APIFY_API_KEY?.trim())
+  );
+
   const { searchParams } = new URL(request.url);
   const pageName = searchParams.get("q") ?? searchParams.get("page");
 
@@ -17,7 +22,11 @@ export async function GET(request: Request) {
 
   try {
     const trimmed = pageName.trim();
-    const useLightScraper = process.env.VERCEL === "1";
+    const useLightScraper = Boolean(process.env.APIFY_API_KEY?.trim());
+    console.log(
+      "Scraper selected:",
+      useLightScraper ? "light (Apify)" : "Playwright"
+    );
 
     const data = useLightScraper
       ? await (

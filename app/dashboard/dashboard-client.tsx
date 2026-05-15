@@ -14,30 +14,102 @@ import {
   trafficBarClass,
   trafficTextClass,
 } from "@/lib/traffic-light";
+import { EngagementChart } from "@/components/engagement-chart";
+import { generateEngagementSeries } from "@/lib/engagement-series";
 import {
   PageSearchBar,
   type PageResult,
 } from "./page-search-bar";
 
-function engagementSeriesFromScore(piqScore: number, pageName: string) {
-  const seed = pageName.split("").reduce((h, c) => h + c.charCodeAt(0), 0);
-  return Array.from({ length: 30 }, (_, i) => {
-    const wave = Math.sin((i + seed) * 0.45) * 12;
-    const trend = i * 0.8;
-    return Math.round(Math.max(20, piqScore * 0.6 + wave + trend));
-  });
+const cardClass =
+  "rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-600 dark:bg-zinc-900";
+const sectionTitleClass = "text-sm font-semibold text-slate-900 dark:text-white";
+const sectionSubClass = "mt-0.5 text-xs text-slate-500 dark:text-zinc-400";
+const statLabelClass = "text-xs font-medium text-slate-500 dark:text-zinc-400";
+const statValueClass = "mt-0.5 text-xl font-bold text-slate-900 dark:text-white";
+
+function pageInitials(name: string) {
+  return (
+    name
+      .split(" ")
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
+function PageAvatar({
+  name,
+  imageUrl,
+  size = "md",
+}: {
+  name: string;
+  imageUrl?: string | null;
+  size?: "sm" | "md";
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const sizeClass = size === "sm" ? "h-9 w-9 text-xs" : "h-10 w-10 text-sm";
+  const initial = pageInitials(name);
+
+  if (imageUrl && !imageFailed) {
+    return (
+      <img
+        src={imageUrl}
+        alt=""
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-2 ring-blue-100 dark:ring-zinc-700`}
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`flex ${sizeClass} shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-700 font-bold text-white shadow-sm`}
+    >
+      {initial.slice(0, 1)}
+    </span>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  valueClassName = statValueClass,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  valueClassName?: string;
+}) {
+  return (
+    <article className={cardClass}>
+      <p className={statLabelClass}>{label}</p>
+      <p className={valueClassName}>{value}</p>
+      {hint ? (
+        <p className="mt-0.5 text-[10px] text-slate-400 dark:text-zinc-500">{hint}</p>
+      ) : null}
+    </article>
+  );
 }
 
 function DefaultDashboardMain() {
-  const engagementByDay = [
-    42, 38, 55, 48, 62, 58, 71, 65, 78, 72, 85, 80, 76, 88, 92, 86, 94, 90,
-    98, 95, 102, 88, 91, 105, 110, 98, 115, 108, 120, 118,
-  ];
-  const maxEngagement = Math.max(...engagementByDay);
+  const engagementByDay = useMemo(
+    () =>
+      generateEngagementSeries({
+        pageName: "PageIQ Demo",
+        piqScore: 82,
+        engagementRate: "4.8%",
+        postsLast30Days: 24,
+      }),
+    []
+  );
 
   const statCards = [
     { label: "Followers", value: "284.2K", change: "+12.4%" },
     { label: "Engagement Rate", value: "4.8%", change: "+0.6%" },
+    { label: "Posts Today", value: "2", change: "since midnight" },
     { label: "Posts This Month", value: "24", change: "+3" },
     { label: "Outlier Posts", value: "7", change: "+2" },
   ];
@@ -77,15 +149,12 @@ function DefaultDashboardMain() {
 
   return (
   <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {statCards.map((stat) => (
-          <article
-            key={stat.label}
-            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-600 dark:bg-zinc-900"
-          >
-            <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">{stat.label}</p>
+          <article key={stat.label} className={cardClass}>
+            <p className={statLabelClass}>{stat.label}</p>
             <p
-              className={`mt-2 text-3xl font-bold ${
+              className={`mt-0.5 text-xl font-bold ${
                 stat.label === "Engagement Rate"
                   ? trafficTextClass(engagementTrafficLevelFromString(stat.value))
                   : "text-slate-900 dark:text-white"
@@ -94,7 +163,7 @@ function DefaultDashboardMain() {
               {stat.value}
             </p>
             <p
-              className={`mt-2 text-sm font-medium ${
+              className={`mt-0.5 text-[10px] font-medium ${
                 stat.change.includes("%")
                   ? trafficTextClass(
                       followerGrowthTrafficLevelFromString(stat.change)
@@ -102,28 +171,28 @@ function DefaultDashboardMain() {
                   : "text-slate-500 dark:text-zinc-400"
               }`}
             >
-              {stat.change} vs last month
+              {stat.label === "Posts Today"
+                ? stat.change
+                : `${stat.change} vs last month`}
             </p>
           </article>
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-5">
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-600 dark:bg-zinc-900 xl:col-span-3">
-          <div className="mb-6 flex items-start justify-between">
+      <div className="mt-3 grid gap-3 xl:grid-cols-5">
+        <section className={`${cardClass} xl:col-span-3`}>
+          <div className="mb-2 flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Engagement over 30 days
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+              <h2 className={sectionTitleClass}>Engagement over 30 days</h2>
+              <p className={sectionSubClass}>
                 Daily engagement score across all posts
               </p>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-zinc-800 dark:text-blue-400">
+            <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-zinc-800 dark:text-blue-400">
               Last 30 days
             </span>
           </div>
-          <EngagementChart data={engagementByDay} max={maxEngagement} />
+          <EngagementChart data={engagementByDay} />
         </section>
 
         <PageHealthPanel piqScore={82} />
@@ -179,17 +248,20 @@ function SearchResultsMain({
     }
   }
   const engagementByDay = useMemo(
-    () => engagementSeriesFromScore(result.piqScore, result.pageName),
-    [result.piqScore, result.pageName]
+    () =>
+      generateEngagementSeries({
+        pageName: result.pageName,
+        piqScore: result.piqScore,
+        engagementRate: result.engagementRate,
+        postsLast30Days: result.postsLast30Days,
+      }),
+    [
+      result.pageName,
+      result.piqScore,
+      result.engagementRate,
+      result.postsLast30Days,
+    ]
   );
-  const maxEngagement = Math.max(...engagementByDay);
-
-  const initials = result.pageName
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
 
   const reach = Math.min(98, Math.max(55, result.piqScore + 8));
   const shares = Math.min(95, Math.max(50, result.piqScore - 4));
@@ -197,48 +269,53 @@ function SearchResultsMain({
 
   return (
     <>
-      <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-600 dark:bg-zinc-900">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-base font-bold text-white shadow-md shadow-blue-600/30">
-              {initials}
-            </span>
+      <section className={cardClass}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <PageAvatar
+              name={result.pageName}
+              imageUrl={result.profilePictureUrl}
+            />
             <div className="min-w-0">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{result.pageName}</h2>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">Facebook Page</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                {result.pageName}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">Facebook Page</p>
               {result.about ? (
-                <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-zinc-300">{result.about}</p>
+                <p className="mt-0.5 line-clamp-2 max-w-2xl text-xs text-slate-600 dark:text-zinc-300">
+                  {result.about}
+                </p>
               ) : null}
             </div>
           </div>
-          <div className="flex flex-col items-start gap-3 sm:items-end">
+          <div className="flex flex-col items-start gap-2 sm:items-end">
             <div className="text-left sm:text-right">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
                 PIQ Score
               </p>
               <p
-                className={`text-3xl font-bold ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
+                className={`text-2xl font-bold leading-tight ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
               >
                 {result.piqScore}
-                <span className="text-base font-medium text-slate-400 dark:text-zinc-500">
+                <span className="text-sm font-medium text-slate-400 dark:text-zinc-500">
                   /100
                 </span>
               </p>
               <p
-                className={`mt-1 text-sm ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
+                className={`text-xs ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
               >
                 {piqLabel(result.piqScore)}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 onClick={addToWatchlist}
                 disabled={watchlistSaving || watchlistSaved}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <svg
-                  className="h-4 w-4"
+                  className="h-3.5 w-3.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -259,23 +336,28 @@ function SearchResultsMain({
               {watchlistSaved ? (
                 <Link
                   href="/watchlist"
-                  className="inline-flex rounded-xl border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-zinc-600 dark:text-blue-400 dark:hover:bg-zinc-800"
+                  className="inline-flex rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-zinc-600 dark:text-blue-400 dark:hover:bg-zinc-800"
                 >
                   View Watchlist
                 </Link>
               ) : null}
             </div>
             {watchlistError ? (
-              <p className="text-sm text-red-600">{watchlistError}</p>
+              <p className="text-xs text-red-600">{watchlistError}</p>
             ) : null}
           </div>
         </div>
       </section>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {[
           { label: "Followers", value: result.followerCount },
           { label: "Engagement rate", value: result.engagementRate },
+          {
+            label: "Posts Today",
+            value: String(result.postsToday ?? 0),
+            hint: "since midnight",
+          },
           {
             label: "Last 30 days",
             value: String(result.postsLast30Days),
@@ -290,43 +372,34 @@ function SearchResultsMain({
           const valueClass =
             stat.label === "Engagement rate"
               ? trafficTextClass(engagementTrafficLevelFromString(stat.value))
-              : "text-slate-900 dark:text-white";
+              : statValueClass;
 
           return (
-            <article
+            <StatCard
               key={stat.label}
-              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-600 dark:bg-zinc-900"
-            >
-              <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
-                {stat.label}
-              </p>
-              <p className={`mt-2 text-3xl font-bold ${valueClass}`}>{stat.value}</p>
-              {stat.hint ? (
-                <p className="mt-2 text-xs text-slate-400 dark:text-zinc-500">
-                  {stat.hint}
-                </p>
-              ) : null}
-            </article>
+              label={stat.label}
+              value={stat.value}
+              hint={stat.hint}
+              valueClassName={valueClass}
+            />
           );
         })}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-5">
-        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-600 dark:bg-zinc-900 xl:col-span-3">
-          <div className="mb-6 flex items-start justify-between">
+      <div className="mt-3 grid gap-3 xl:grid-cols-5">
+        <section className={`${cardClass} xl:col-span-3`}>
+          <div className="mb-2 flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Engagement over 30 days
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+              <h2 className={sectionTitleClass}>Engagement over 30 days</h2>
+              <p className={sectionSubClass}>
                 Estimated daily engagement from sample analysis
               </p>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-zinc-800 dark:text-blue-400">
+            <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-zinc-800 dark:text-blue-400">
               Last 30 days
             </span>
           </div>
-          <EngagementChart data={engagementByDay} max={maxEngagement} />
+          <EngagementChart data={engagementByDay} />
         </section>
 
         <PageHealthPanel
@@ -353,28 +426,6 @@ function SearchResultsMain({
   );
 }
 
-function EngagementChart({ data, max }: { data: number[]; max: number }) {
-  return (
-    <>
-      <div className="flex h-48 items-end gap-1">
-        {data.map((value, i) => (
-          <div key={i} className="group relative flex-1" title={`Day ${i + 1}: ${value}`}>
-            <div
-              className="w-full rounded-t-sm bg-gradient-to-t from-blue-600 to-blue-400 opacity-90 transition group-hover:opacity-100"
-              style={{ height: `${(value / max) * 100}%` }}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex justify-between text-xs text-slate-400 dark:text-zinc-500">
-        <span>Day 1</span>
-        <span>Day 15</span>
-        <span>Day 30</span>
-      </div>
-    </>
-  );
-}
-
 function PageHealthPanel({
   piqScore,
   reach,
@@ -393,23 +444,21 @@ function PageHealthPanel({
   ];
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-600 dark:bg-zinc-900 xl:col-span-2">
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-        Page health
-      </h2>
-      <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-        Performance index based on PIQ score of{" "}
+    <section className={`${cardClass} xl:col-span-2`}>
+      <h2 className={sectionTitleClass}>Page health</h2>
+      <p className={`${sectionSubClass} mt-1`}>
+        PIQ{" "}
         <span className={trafficTextClass(piqTrafficLevel(piqScore))}>
           {piqScore}/100
         </span>{" "}
         — {piqLabel(piqScore)}.
       </p>
-      <div className="mt-6 space-y-4">
+      <div className="mt-3 space-y-2.5">
         {metrics.map((metric) => {
           const level = piqTrafficLevel(metric.value);
           return (
             <div key={metric.label}>
-              <div className="mb-1 flex justify-between text-sm">
+              <div className="mb-0.5 flex justify-between text-xs">
                 <span className="text-slate-500 dark:text-zinc-400">
                   {metric.label}
                 </span>
@@ -417,7 +466,7 @@ function PageHealthPanel({
                   {metric.value}%
                 </span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-700">
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-700">
                 <div
                   className={`h-full rounded-full ${trafficBarClass(level)}`}
                   style={{ width: `${metric.value}%` }}
@@ -451,23 +500,23 @@ function OutlierPostsTable({
   emptyMessage?: string;
 }) {
   return (
-    <section className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-zinc-900">
-      <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-600">
+    <section className={`mt-3 overflow-hidden ${cardClass}`}>
+      <div className="border-b border-gray-200 px-3 py-2 dark:border-gray-600">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+            <h2 className={sectionTitleClass}>
               {sampleAnalysis ? "Sample Posts Analysis" : "Top outlier posts"}
             </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">{subtitle}</p>
+            <p className={sectionSubClass}>{subtitle}</p>
           </div>
           {sampleAnalysis ? (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950 dark:text-amber-300">
               Sample data
             </span>
           ) : null}
         </div>
         {sampleAnalysis ? (
-          <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+          <p className="mt-1 text-[10px] text-slate-500 dark:text-zinc-400">
             Example posts for this page&apos;s niche until the full Facebook API is
             connected. Outliers are 3×+ above average engagement.
           </p>
@@ -475,19 +524,19 @@ function OutlierPostsTable({
       </div>
 
       {posts.length === 0 ? (
-        <p className="px-6 py-8 text-sm text-slate-600 dark:text-zinc-300">{emptyMessage}</p>
+        <p className="px-3 py-4 text-xs text-slate-600 dark:text-zinc-300">{emptyMessage}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-xs">
             <thead>
               <tr className="border-b border-gray-200 bg-slate-50/80 dark:border-gray-600 dark:bg-zinc-800/80">
-                <th className="px-6 py-3 font-semibold text-slate-600 dark:text-zinc-300">Type</th>
-                <th className="px-6 py-3 font-semibold text-slate-600 dark:text-zinc-300">Post preview</th>
+                <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-300">Type</th>
+                <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-300">Post preview</th>
                 {sampleAnalysis ? (
-                  <th className="px-6 py-3 font-semibold text-slate-600 dark:text-zinc-300">Posted</th>
+                  <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-300">Posted</th>
                 ) : null}
-                <th className="px-6 py-3 font-semibold text-slate-600 dark:text-zinc-300">Multiplier</th>
-                <th className="px-6 py-3 font-semibold text-slate-600 dark:text-zinc-300">Engagement</th>
+                <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-300">Multiplier</th>
+                <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-300">Engagement</th>
               </tr>
             </thead>
             <tbody>
@@ -496,18 +545,18 @@ function OutlierPostsTable({
                   key={`${post.preview}-${i}`}
                   className="border-b border-gray-200 transition hover:bg-blue-50/40 dark:border-gray-600 dark:hover:bg-zinc-800/60"
                 >
-                  <td className="px-6 py-4">
-                    <span className="inline-flex rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-semibold capitalize text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                  <td className="px-3 py-2">
+                    <span className="inline-flex rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-semibold capitalize text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                       {post.type}
                     </span>
                   </td>
-                  <td className="max-w-md px-6 py-4 text-slate-700 dark:text-zinc-200">
+                  <td className="max-w-md px-3 py-2 text-slate-700 dark:text-zinc-200">
                     <p className="line-clamp-2">{post.preview}</p>
                   </td>
                   {sampleAnalysis ? (
-                    <td className="px-6 py-4 text-slate-500 dark:text-zinc-400">{post.postedAt ?? "—"}</td>
+                    <td className="px-3 py-2 text-slate-500 dark:text-zinc-400">{post.postedAt ?? "—"}</td>
                   ) : null}
-                  <td className="px-6 py-4">
+                  <td className="px-3 py-2">
                     <span
                       className={`font-semibold ${trafficTextClass(
                         multiplierTrafficLevelFromString(post.multiplier)
@@ -516,7 +565,7 @@ function OutlierPostsTable({
                       {post.multiplier}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">
+                  <td className="px-3 py-2 font-semibold text-slate-900 dark:text-white">
                     {post.engagement}
                   </td>
                 </tr>
@@ -587,14 +636,14 @@ export function DashboardClient() {
 
   return (
     <>
-      <header className="border-b border-blue-100 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4">
+      <header className="border-b border-blue-100 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-base font-bold text-slate-900 dark:text-white">
                 Dashboard
               </h1>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
                 {result
                   ? `Facebook analytics · ${result.pageName}`
                   : "Search a Facebook page to view analytics"}
@@ -611,7 +660,7 @@ export function DashboardClient() {
           {error ? (
             <p
               role="alert"
-              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
             >
               {error}
             </p>
@@ -619,7 +668,7 @@ export function DashboardClient() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-3">
         {result ? (
           <SearchResultsMain
             result={result}

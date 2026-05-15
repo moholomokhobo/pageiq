@@ -29,8 +29,10 @@ export type FacebookPageStats = {
   engagementRate: string;
   postsLast30Days: number;
   postsThisMonth: number;
+  postsToday: number;
   piqScore: number;
-  samplePostsAnalysis: true;
+  samplePostsAnalysis: boolean;
+  profilePictureUrl?: string;
   outlierPosts: OutlierPostResult[];
 };
 
@@ -97,6 +99,12 @@ function isThisMonth(date: Date): boolean {
 
 function countPostsThisMonth(posts: ScrapedPost[]): number {
   return posts.filter((post) => isThisMonth(post.postedAtDate)).length;
+}
+
+export function countPostsToday(posts: ScrapedPost[]): number {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return posts.filter((post) => post.postedAtDate >= startOfToday).length;
 }
 
 type PageNiche =
@@ -326,16 +334,19 @@ export function findOutlierPosts(posts: ScrapedPost[]): OutlierPostResult[] {
     .sort((a, b) => parseFloat(b.multiplier) - parseFloat(a.multiplier));
 }
 
-export function buildPageStats(
+export function buildPageStatsFromPosts(
   pageName: string,
   about: string,
-  followers: number
+  followers: number,
+  posts: ScrapedPost[],
+  samplePostsAnalysis = false,
+  profilePictureUrl?: string
 ): FacebookPageStats {
-  const posts = generateMockPosts(pageName, followers, about);
   const engagementRate = calculateEngagementRate(followers, posts);
   const outlierPosts = findOutlierPosts(posts);
   const postsLast30Days = posts.length;
   const postsThisMonth = countPostsThisMonth(posts);
+  const postsToday = countPostsToday(posts);
   const piqScore = calculatePiqScore(
     followers,
     engagementRate,
@@ -349,10 +360,21 @@ export function buildPageStats(
     engagementRate: `${engagementRate}%`,
     postsLast30Days,
     postsThisMonth,
+    postsToday,
     piqScore,
-    samplePostsAnalysis: true,
+    samplePostsAnalysis,
+    profilePictureUrl,
     outlierPosts,
   };
+}
+
+export function buildPageStats(
+  pageName: string,
+  about: string,
+  followers: number
+): FacebookPageStats {
+  const posts = generateMockPosts(pageName, followers, about);
+  return buildPageStatsFromPosts(pageName, about, followers, posts, true);
 }
 
 export function estimateFollowersFromName(pageName: string): number {
