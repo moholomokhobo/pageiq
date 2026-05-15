@@ -10,8 +10,10 @@
 - Login
 - Signup
 - Dashboard with search (mock results)
+- Real Supabase authentication — users can sign up and log in
+- User data stored in Supabase database
 
 ## Next session
 
-1. Add Supabase database for real user signups
-2. Build the real Facebook page analytics feature
+1. Protect the dashboard so only logged-in users can access it
+2. Build the real Facebook page search feature
