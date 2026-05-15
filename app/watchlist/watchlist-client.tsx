@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { WatchlistRow } from "@/app/api/watchlist/route";
-
-function piqLabel(score: number) {
-  if (score >= 85) return "Exceptional";
-  if (score >= 72) return "Strong";
-  if (score >= 60) return "Growing";
-  return "Emerging";
-}
+import {
+  piqLabel,
+  piqTrafficLevel,
+  trafficTextClass,
+} from "@/lib/traffic-light";
 
 function pageInitials(name: string) {
   return name
@@ -131,13 +129,21 @@ export function WatchlistClient() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
                       PIQ
                     </p>
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                    <p
+                      className={`text-2xl font-bold ${trafficTextClass(
+                        piqTrafficLevel(item.piq_score)
+                      )}`}
+                    >
                       {item.piq_score}
                     </p>
-                    <p className="text-xs text-blue-600">
+                    <p
+                      className={`text-xs ${trafficTextClass(
+                        piqTrafficLevel(item.piq_score)
+                      )}`}
+                    >
                       {piqLabel(item.piq_score)}
                     </p>
                   </div>

@@ -9,10 +9,10 @@ export type NavLabel =
 
 const navItems: { label: NavLabel; href: string }[] = [
   { label: "Dashboard", href: "/dashboard" },
-  { label: "Discover", href: "#" },
+  { label: "Discover", href: "/discover" },
   { label: "Watchlist", href: "/watchlist" },
   { label: "Compare", href: "/compare" },
-  { label: "AI Tools", href: "#" },
+  { label: "AI Tools", href: "/ai-tools" },
 ];
 
 function PageLogo() {

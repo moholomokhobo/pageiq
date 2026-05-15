@@ -3,18 +3,21 @@
 import { ThemeToggle } from "@/components/theme-toggle";
 import { normalizePageUrl } from "@/lib/page-url";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  engagementTrafficLevelFromString,
+  followerGrowthTrafficLevelFromString,
+  multiplierTrafficLevelFromString,
+  piqLabel,
+  piqTrafficLevel,
+  trafficBarClass,
+  trafficTextClass,
+} from "@/lib/traffic-light";
 import {
   PageSearchBar,
   type PageResult,
 } from "./page-search-bar";
-
-function piqLabel(score: number) {
-  if (score >= 85) return "Exceptional";
-  if (score >= 72) return "Strong";
-  if (score >= 60) return "Growing";
-  return "Emerging";
-}
 
 function engagementSeriesFromScore(piqScore: number, pageName: string) {
   const seed = pageName.split("").reduce((h, c) => h + c.charCodeAt(0), 0);
@@ -33,10 +36,10 @@ function DefaultDashboardMain() {
   const maxEngagement = Math.max(...engagementByDay);
 
   const statCards = [
-    { label: "Followers", value: "284.2K", change: "+12.4%", positive: true },
-    { label: "Engagement Rate", value: "4.8%", change: "+0.6%", positive: true },
-    { label: "Posts This Month", value: "24", change: "+3", positive: true },
-    { label: "Outlier Posts", value: "7", change: "+2", positive: true },
+    { label: "Followers", value: "284.2K", change: "+12.4%" },
+    { label: "Engagement Rate", value: "4.8%", change: "+0.6%" },
+    { label: "Posts This Month", value: "24", change: "+3" },
+    { label: "Outlier Posts", value: "7", change: "+2" },
   ];
 
   const outlierPosts = [
@@ -81,10 +84,22 @@ function DefaultDashboardMain() {
             className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-600 dark:bg-zinc-900"
           >
             <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">{stat.label}</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
+            <p
+              className={`mt-2 text-3xl font-bold ${
+                stat.label === "Engagement Rate"
+                  ? trafficTextClass(engagementTrafficLevelFromString(stat.value))
+                  : "text-slate-900 dark:text-white"
+              }`}
+            >
+              {stat.value}
+            </p>
             <p
               className={`mt-2 text-sm font-medium ${
-                stat.positive ? "text-emerald-600" : "text-red-600"
+                stat.change.includes("%")
+                  ? trafficTextClass(
+                      followerGrowthTrafficLevelFromString(stat.change)
+                    )
+                  : "text-slate-500 dark:text-zinc-400"
               }`}
             >
               {stat.change} vs last month
@@ -198,14 +213,22 @@ function SearchResultsMain({
           </div>
           <div className="flex flex-col items-start gap-3 sm:items-end">
             <div className="text-left sm:text-right">
-              <p className="text-xs font-medium uppercase tracking-wide text-blue-600">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
                 PIQ Score
               </p>
-              <p className="text-3xl font-bold text-slate-900 dark:text-white">
+              <p
+                className={`text-3xl font-bold ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
+              >
                 {result.piqScore}
-                <span className="text-base font-medium text-slate-400 dark:text-zinc-500">/100</span>
+                <span className="text-base font-medium text-slate-400 dark:text-zinc-500">
+                  /100
+                </span>
               </p>
-              <p className="mt-1 text-sm text-blue-600">{piqLabel(result.piqScore)}</p>
+              <p
+                className={`mt-1 text-sm ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
+              >
+                {piqLabel(result.piqScore)}
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -263,18 +286,29 @@ function SearchResultsMain({
             value: String(result.postsThisMonth),
             hint: "posts this month",
           },
-        ].map((stat) => (
-          <article
-            key={stat.label}
-            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-600 dark:bg-zinc-900"
-          >
-            <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">{stat.label}</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
-            {stat.hint ? (
-              <p className="mt-2 text-xs text-slate-400 dark:text-zinc-500">{stat.hint}</p>
-            ) : null}
-          </article>
-        ))}
+        ].map((stat) => {
+          const valueClass =
+            stat.label === "Engagement rate"
+              ? trafficTextClass(engagementTrafficLevelFromString(stat.value))
+              : "text-slate-900 dark:text-white";
+
+          return (
+            <article
+              key={stat.label}
+              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-600 dark:bg-zinc-900"
+            >
+              <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
+                {stat.label}
+              </p>
+              <p className={`mt-2 text-3xl font-bold ${valueClass}`}>{stat.value}</p>
+              {stat.hint ? (
+                <p className="mt-2 text-xs text-slate-400 dark:text-zinc-500">
+                  {stat.hint}
+                </p>
+              ) : null}
+            </article>
+          );
+        })}
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-5">
@@ -364,25 +398,34 @@ function PageHealthPanel({
         Page health
       </h2>
       <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-        Performance index based on PIQ score of {piqScore}/100 — {piqLabel(piqScore)}.
+        Performance index based on PIQ score of{" "}
+        <span className={trafficTextClass(piqTrafficLevel(piqScore))}>
+          {piqScore}/100
+        </span>{" "}
+        — {piqLabel(piqScore)}.
       </p>
       <div className="mt-6 space-y-4">
-        {metrics.map((metric) => (
-          <div key={metric.label}>
-            <div className="mb-1 flex justify-between text-sm">
-              <span className="text-slate-500 dark:text-zinc-400">{metric.label}</span>
-              <span className="font-semibold text-slate-900 dark:text-white">
-                {metric.value}%
-              </span>
+        {metrics.map((metric) => {
+          const level = piqTrafficLevel(metric.value);
+          return (
+            <div key={metric.label}>
+              <div className="mb-1 flex justify-between text-sm">
+                <span className="text-slate-500 dark:text-zinc-400">
+                  {metric.label}
+                </span>
+                <span className={`font-semibold ${trafficTextClass(level)}`}>
+                  {metric.value}%
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-700">
+                <div
+                  className={`h-full rounded-full ${trafficBarClass(level)}`}
+                  style={{ width: `${metric.value}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-700">
-              <div
-                className="h-full rounded-full bg-slate-600 dark:bg-zinc-300"
-                style={{ width: `${metric.value}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -465,7 +508,11 @@ function OutlierPostsTable({
                     <td className="px-6 py-4 text-slate-500 dark:text-zinc-400">{post.postedAt ?? "—"}</td>
                   ) : null}
                   <td className="px-6 py-4">
-                    <span className="font-semibold text-emerald-600">
+                    <span
+                      className={`font-semibold ${trafficTextClass(
+                        multiplierTrafficLevelFromString(post.multiplier)
+                      )}`}
+                    >
                       {post.multiplier}
                     </span>
                   </td>
@@ -483,14 +530,17 @@ function OutlierPostsTable({
 }
 
 export function DashboardClient() {
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const initialQuery = searchParams.get("q") ?? "";
+  const autoSearchRan = useRef(false);
+
+  const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState<PageResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSearch(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = query.trim();
+  const runSearch = useCallback(async (searchQuery: string) => {
+    const trimmed = searchQuery.trim();
 
     if (!trimmed) {
       setResult(null);
@@ -520,6 +570,19 @@ export function DashboardClient() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    if (!q || autoSearchRan.current) return;
+    autoSearchRan.current = true;
+    setQuery(q);
+    void runSearch(q);
+  }, [searchParams, runSearch]);
+
+  async function handleSearch(e: FormEvent) {
+    e.preventDefault();
+    await runSearch(query);
   }
 
   return (

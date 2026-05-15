@@ -36,7 +36,9 @@ export async function proxy(request: NextRequest) {
   const isProtected =
     request.nextUrl.pathname.startsWith("/dashboard") ||
     request.nextUrl.pathname.startsWith("/watchlist") ||
-    request.nextUrl.pathname.startsWith("/compare");
+    request.nextUrl.pathname.startsWith("/compare") ||
+    request.nextUrl.pathname.startsWith("/ai-tools") ||
+    request.nextUrl.pathname.startsWith("/discover");
 
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
@@ -54,5 +56,9 @@ export const config = {
     "/watchlist/:path*",
     "/compare",
     "/compare/:path*",
+    "/ai-tools",
+    "/ai-tools/:path*",
+    "/discover",
+    "/discover/:path*",
   ],
 };

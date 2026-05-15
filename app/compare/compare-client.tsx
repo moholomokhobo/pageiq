@@ -9,6 +9,15 @@ import {
   pickWinner,
   type CompareWinner,
 } from "@/lib/metrics";
+import {
+  compareBarClass,
+  compareMetricCardClass,
+  compareMetricTextClass,
+  multiplierTrafficLevelFromString,
+  piqLabel,
+  piqTrafficLevel,
+  trafficTextClass,
+} from "@/lib/traffic-light";
 import { FormEvent, useMemo, useState } from "react";
 
 const cardClass =
@@ -16,13 +25,6 @@ const cardClass =
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-4 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-blue-500 dark:focus:bg-zinc-800";
-
-function piqLabel(score: number) {
-  if (score >= 85) return "Exceptional";
-  if (score >= 72) return "Strong";
-  if (score >= 60) return "Growing";
-  return "Emerging";
-}
 
 function pageInitials(name: string) {
   return name
@@ -42,18 +44,6 @@ async function fetchPage(query: string): Promise<PageResult> {
     throw new Error(data.error ?? "Search failed. Please try again.");
   }
   return data as PageResult;
-}
-
-function winnerClass(side: "left" | "right", winner: CompareWinner) {
-  if (winner === "tie" || winner !== side) {
-    return "text-slate-900 dark:text-white";
-  }
-  return "font-semibold text-emerald-600 dark:text-emerald-400";
-}
-
-function winnerCardClass(side: "left" | "right", winner: CompareWinner) {
-  if (winner === "tie" || winner !== side) return "";
-  return "ring-2 ring-emerald-500/40";
 }
 
 type CompareWinners = {
@@ -133,19 +123,23 @@ function MetricRow({
   side: "left" | "right";
   winner: CompareWinner;
 }) {
+  const textClass = compareMetricTextClass(side, winner);
+
   return (
-    <div
-      className={`${cardClass} ${winnerCardClass(side, winner)}`}
-    >
+    <div className={`${cardClass} ${compareMetricCardClass(side, winner)}`}>
       <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
         {label}
       </p>
-      <p className={`mt-2 text-2xl font-bold ${winnerClass(side, winner)}`}>
-        {value}
-      </p>
-      {winner === side ? (
-        <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-          Winner
+      <p className={`mt-2 text-2xl font-bold ${textClass}`}>{value}</p>
+      {winner !== "tie" ? (
+        <p
+          className={`mt-1 text-xs font-medium ${
+            winner === side
+              ? "text-green-600 dark:text-green-400"
+              : "text-red-600 dark:text-red-400"
+          }`}
+        >
+          {winner === side ? "Winner" : "Behind"}
         </p>
       ) : null}
     </div>
@@ -229,40 +223,37 @@ function PageColumn({
           Page health
         </h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          {piqLabel(result.piqScore)} · PIQ {result.piqScore}/100
+          <span className={trafficTextClass(piqTrafficLevel(result.piqScore))}>
+            {piqLabel(result.piqScore)} · PIQ {result.piqScore}/100
+          </span>
         </p>
         <div className="mt-5 space-y-4">
-          {healthMetrics.map((metric) => (
-            <div key={metric.key}>
-              <div className="mb-1 flex justify-between text-sm">
-                <span
-                  className={
-                    winners[metric.key] === side
-                      ? "font-medium text-emerald-600 dark:text-emerald-400"
-                      : "text-slate-500 dark:text-zinc-400"
-                  }
-                >
-                  {metric.label}
-                  {winners[metric.key] === side ? " · Winner" : ""}
-                </span>
-                <span
-                  className={`font-semibold ${winnerClass(side, winners[metric.key])}`}
-                >
-                  {metric.value}%
-                </span>
+          {healthMetrics.map((metric) => {
+            const winner = winners[metric.key];
+            return (
+              <div key={metric.key}>
+                <div className="mb-1 flex justify-between text-sm">
+                  <span className={compareMetricTextClass(side, winner)}>
+                    {metric.label}
+                    {winner !== "tie"
+                      ? winner === side
+                        ? " · Winner"
+                        : " · Behind"
+                      : ""}
+                  </span>
+                  <span className={compareMetricTextClass(side, winner)}>
+                    {metric.value}%
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-700">
+                  <div
+                    className={`h-full rounded-full ${compareBarClass(side, winner)}`}
+                    style={{ width: `${metric.value}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-700">
-                <div
-                  className={`h-full rounded-full ${
-                    winners[metric.key] === side
-                      ? "bg-emerald-500 dark:bg-emerald-400"
-                      : "bg-slate-600 dark:bg-zinc-300"
-                  }`}
-                  style={{ width: `${metric.value}%` }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -287,7 +278,11 @@ function PageColumn({
                   <span className="inline-flex shrink-0 rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-semibold capitalize text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                     {post.type}
                   </span>
-                  <span className="shrink-0 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span
+                    className={`shrink-0 text-sm font-semibold ${trafficTextClass(
+                      multiplierTrafficLevelFromString(post.multiplier)
+                    )}`}
+                  >
                     {post.multiplier}
                   </span>
                 </div>
@@ -414,9 +409,7 @@ export function CompareClient() {
             <PageColumn result={right} side="right" winners={winners} />
           </div>
         ) : (
-          <div
-            className={`${cardClass} mx-auto max-w-lg p-10 text-center`}
-          >
+          <div className={`${cardClass} mx-auto max-w-lg p-10 text-center`}>
             <p className="text-lg font-semibold text-slate-900 dark:text-white">
               Compare two pages
             </p>
