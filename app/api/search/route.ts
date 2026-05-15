@@ -1,4 +1,3 @@
-import { scrapeFacebookPage } from "@/lib/facebook-scraper";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -17,7 +16,17 @@ export async function GET(request: Request) {
   }
 
   try {
-    const data = await scrapeFacebookPage(pageName);
+    const trimmed = pageName.trim();
+    const useLightScraper = process.env.VERCEL === "1";
+
+    const data = useLightScraper
+      ? await (
+          await import("@/lib/facebook-scraper-light")
+        ).scrapeFacebookPageLight(trimmed)
+      : await (
+          await import("@/lib/facebook-scraper")
+        ).scrapeFacebookPage(trimmed);
+
     return NextResponse.json(data);
   } catch (error) {
     const message =
