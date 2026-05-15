@@ -48,11 +48,11 @@ export async function POST(request: Request) {
   const pageUrl = body.pageUrl?.trim();
   const pageName = body.pageName?.trim();
   const pageFollowers = body.pageFollowers?.trim();
-  const piqScore = Number(body.piqScore);
+  const outlierScore = Number(body.outlierScore ?? body.piqScore);
 
-  if (!pageUrl || !pageName || !pageFollowers || Number.isNaN(piqScore)) {
+  if (!pageUrl || !pageName || !pageFollowers || Number.isNaN(outlierScore)) {
     return NextResponse.json(
-      { error: "Missing pageUrl, pageName, pageFollowers, or piqScore" },
+      { error: "Missing pageUrl, pageName, pageFollowers, or outlierScore" },
       { status: 400 }
     );
   }
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       page_url: pageUrl,
       page_name: pageName,
       page_followers: pageFollowers,
-      piq_score: piqScore,
+      piq_score: outlierScore,
     })
     .select()
     .single();

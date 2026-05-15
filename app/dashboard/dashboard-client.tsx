@@ -9,12 +9,17 @@ import {
   engagementTrafficLevelFromString,
   followerGrowthTrafficLevelFromString,
   multiplierTrafficLevelFromString,
-  piqLabel,
-  piqTrafficLevel,
+  outlierLabel,
+  outlierTrafficLevel,
   trafficBarClass,
   trafficTextClass,
 } from "@/lib/traffic-light";
 import { EngagementChart } from "@/components/engagement-chart";
+import { OutlierScoreLabel } from "@/components/outlier-score-label";
+import { PostOutlierBadge } from "@/components/score-badges";
+import { MonetizationPanel } from "@/components/monetization-intelligence";
+import { calculateOutlierScore } from "@/lib/outlier-score";
+import { calculateMonetizationIntel } from "@/lib/cpm-intelligence";
 import { generateEngagementSeries } from "@/lib/engagement-series";
 import {
   PageSearchBar,
@@ -99,8 +104,20 @@ function DefaultDashboardMain() {
     () =>
       generateEngagementSeries({
         pageName: "PageIQ Demo",
-        piqScore: 82,
+        outlierScore: 82,
         engagementRate: "4.8%",
+        postsLast30Days: 24,
+      }),
+    []
+  );
+  const demoMonetization = useMemo(
+    () =>
+      calculateMonetizationIntel({
+        pageName: "PageIQ Demo",
+        followerCount: "284.2K",
+        engagementRate: "4.8%",
+        contentType: "Reels",
+        homeCountry: "USA",
         postsLast30Days: 24,
       }),
     []
@@ -195,7 +212,11 @@ function DefaultDashboardMain() {
           <EngagementChart data={engagementByDay} />
         </section>
 
-        <PageHealthPanel piqScore={82} />
+        <PageHealthPanel outlierScore={82} />
+      </div>
+
+      <div className="mt-3">
+        <MonetizationPanel intel={demoMonetization} />
       </div>
 
       <OutlierPostsTable
@@ -229,7 +250,7 @@ function SearchResultsMain({
           pageUrl,
           pageName: result.pageName,
           pageFollowers: result.followerCount,
-          piqScore: result.piqScore,
+          outlierScore: result.outlierScore,
         }),
       });
       const data = await response.json();
@@ -251,21 +272,21 @@ function SearchResultsMain({
     () =>
       generateEngagementSeries({
         pageName: result.pageName,
-        piqScore: result.piqScore,
+        outlierScore: result.outlierScore,
         engagementRate: result.engagementRate,
         postsLast30Days: result.postsLast30Days,
       }),
     [
       result.pageName,
-      result.piqScore,
+      result.outlierScore,
       result.engagementRate,
       result.postsLast30Days,
     ]
   );
 
-  const reach = Math.min(98, Math.max(55, result.piqScore + 8));
-  const shares = Math.min(95, Math.max(50, result.piqScore - 4));
-  const comments = Math.min(96, Math.max(52, result.piqScore + 2));
+  const reach = Math.min(98, Math.max(55, result.outlierScore + 8));
+  const shares = Math.min(95, Math.max(50, result.outlierScore - 4));
+  const comments = Math.min(96, Math.max(52, result.outlierScore + 2));
 
   return (
     <>
@@ -290,21 +311,19 @@ function SearchResultsMain({
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
             <div className="text-left sm:text-right">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                PIQ Score
-              </p>
+              <OutlierScoreLabel className="sm:justify-end" />
               <p
-                className={`text-2xl font-bold leading-tight ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
+                className={`text-2xl font-bold leading-tight ${trafficTextClass(outlierTrafficLevel(result.outlierScore))}`}
               >
-                {result.piqScore}
+                {result.outlierScore}
                 <span className="text-sm font-medium text-slate-400 dark:text-zinc-500">
                   /100
                 </span>
               </p>
               <p
-                className={`text-xs ${trafficTextClass(piqTrafficLevel(result.piqScore))}`}
+                className={`text-xs ${trafficTextClass(outlierTrafficLevel(result.outlierScore))}`}
               >
-                {piqLabel(result.piqScore)}
+                {outlierLabel(result.outlierScore)}
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -386,6 +405,10 @@ function SearchResultsMain({
         })}
       </div>
 
+      <div className="mt-3">
+        <MonetizationPanel intel={result.monetization} />
+      </div>
+
       <div className="mt-3 grid gap-3 xl:grid-cols-5">
         <section className={`${cardClass} xl:col-span-3`}>
           <div className="mb-2 flex items-start justify-between gap-2">
@@ -403,7 +426,7 @@ function SearchResultsMain({
         </section>
 
         <PageHealthPanel
-          piqScore={result.piqScore}
+          outlierScore={result.outlierScore}
           reach={reach}
           shares={shares}
           comments={comments}
@@ -427,12 +450,12 @@ function SearchResultsMain({
 }
 
 function PageHealthPanel({
-  piqScore,
+  outlierScore,
   reach,
   shares,
   comments,
 }: {
-  piqScore: number;
+  outlierScore: number;
   reach?: number;
   shares?: number;
   comments?: number;
@@ -447,15 +470,15 @@ function PageHealthPanel({
     <section className={`${cardClass} xl:col-span-2`}>
       <h2 className={sectionTitleClass}>Page health</h2>
       <p className={`${sectionSubClass} mt-1`}>
-        PIQ{" "}
-        <span className={trafficTextClass(piqTrafficLevel(piqScore))}>
-          {piqScore}/100
+        Outlier{" "}
+        <span className={trafficTextClass(outlierTrafficLevel(outlierScore))}>
+          {outlierScore}/100
         </span>{" "}
-        — {piqLabel(piqScore)}.
+        — {outlierLabel(outlierScore)}.
       </p>
       <div className="mt-3 space-y-2.5">
         {metrics.map((metric) => {
-          const level = piqTrafficLevel(metric.value);
+          const level = outlierTrafficLevel(metric.value);
           return (
             <div key={metric.label}>
               <div className="mb-0.5 flex justify-between text-xs">
@@ -551,7 +574,10 @@ function OutlierPostsTable({
                     </span>
                   </td>
                   <td className="max-w-md px-3 py-2 text-slate-700 dark:text-zinc-200">
-                    <p className="line-clamp-2">{post.preview}</p>
+                    <div className="flex flex-wrap items-start gap-1.5">
+                      <p className="line-clamp-2 min-w-0 flex-1">{post.preview}</p>
+                      <PostOutlierBadge multiplier={post.multiplier} />
+                    </div>
                   </td>
                   {sampleAnalysis ? (
                     <td className="px-3 py-2 text-slate-500 dark:text-zinc-400">{post.postedAt ?? "—"}</td>

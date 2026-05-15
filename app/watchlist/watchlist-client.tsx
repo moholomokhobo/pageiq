@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { WatchlistRow } from "@/app/api/watchlist/route";
 import {
-  piqLabel,
-  piqTrafficLevel,
+  outlierLabel,
+  outlierTrafficLevel,
   trafficTextClass,
 } from "@/lib/traffic-light";
 
@@ -129,22 +129,22 @@ export function WatchlistClient() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                      PIQ
+                    <p className="text-xs font-medium tracking-wide text-slate-500 dark:text-zinc-400">
+                      Outlier
                     </p>
                     <p
                       className={`text-2xl font-bold ${trafficTextClass(
-                        piqTrafficLevel(item.piq_score)
+                        outlierTrafficLevel(item.piq_score)
                       )}`}
                     >
                       {item.piq_score}
                     </p>
                     <p
                       className={`text-xs ${trafficTextClass(
-                        piqTrafficLevel(item.piq_score)
+                        outlierTrafficLevel(item.piq_score)
                       )}`}
                     >
-                      {piqLabel(item.piq_score)}
+                      {outlierLabel(item.piq_score)}
                     </p>
                   </div>
                 </div>

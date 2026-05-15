@@ -1,9 +1,10 @@
 import { resolveFacebookPageUrls } from "@/lib/facebook-page-url";
+import { extractCountryFromApifyRecord } from "@/lib/page-country";
 import {
   buildPageStats,
   buildPageStatsFromPosts,
   calculateEngagementRate,
-  calculatePiqScore,
+  calculateOutlierScore,
   estimateFollowersFromName,
   generateMockPosts,
   parseCountToken,
@@ -51,6 +52,7 @@ type ApifyPageRecord = {
   title?: string;
   pageName?: string;
   intro?: string;
+  description?: string;
   about_me?: { text?: string };
   followers?: number;
   likes?: number;
@@ -58,6 +60,13 @@ type ApifyPageRecord = {
   info?: string[];
   profilePictureUrl?: string;
   profilePhoto?: string;
+  city?: unknown;
+  country?: unknown;
+  location?: unknown;
+  address?: unknown;
+  place?: unknown;
+  pageAddress?: unknown;
+  addressStreet?: unknown;
   posts?: ApifyPostRecord[];
   recentPosts?: ApifyPostRecord[];
 };
@@ -272,13 +281,15 @@ function buildStatsFromApifyRecord(
   }
 
   const profilePictureUrl = extractProfilePictureUrl(record);
+  const homeCountry = extractCountryFromApifyRecord(record);
   const stats = buildPageStatsFromPosts(
     pageName,
     about,
     resolvedFollowers,
     posts,
     samplePostsAnalysis,
-    profilePictureUrl
+    profilePictureUrl,
+    homeCountry ?? undefined
   );
 
   const talkingAbout = parseTalkingAbout(record.info);
@@ -290,16 +301,18 @@ function buildStatsFromApifyRecord(
     );
     return {
       ...stats,
+      homeCountry,
       engagementRate: `${engagementRate}%`,
-      piqScore: calculatePiqScore(
+      outlierScore: calculateOutlierScore(
         resolvedFollowers,
         engagementRate,
+        stats.monetization.monetizationScore,
         stats.postsLast30Days
       ),
     };
   }
 
-  return stats;
+  return { ...stats, homeCountry };
 }
 
 async function scrapeWithApify(

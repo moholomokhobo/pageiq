@@ -31,11 +31,11 @@ function parseEngagementPercent(rate: string): number {
  */
 export function generateEngagementSeries(options: {
   pageName: string;
-  piqScore: number;
+  outlierScore: number;
   engagementRate?: string;
   postsLast30Days?: number;
 }): EngagementDayPoint[] {
-  const { pageName, piqScore, engagementRate = "3%", postsLast30Days = 12 } =
+  const { pageName, outlierScore, engagementRate = "3%", postsLast30Days = 12 } =
     options;
 
   const seed = hashString(pageName.toLowerCase().trim());
@@ -43,7 +43,7 @@ export function generateEngagementSeries(options: {
   const rate = parseEngagementPercent(engagementRate);
 
   const base =
-    Math.max(25, piqScore * 0.85 + rate * 8 + Math.min(postsLast30Days, 20) * 1.2);
+    Math.max(25, outlierScore * 0.85 + rate * 8 + Math.min(postsLast30Days, 20) * 1.2);
   const amplitude = base * 0.22;
   const trendSlope = (random() - 0.35) * 0.35;
 

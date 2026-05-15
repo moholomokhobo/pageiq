@@ -23,10 +23,13 @@ export function pickWinner(left: number, right: number): CompareWinner {
   return left > right ? "left" : "right";
 }
 
-export function pageHealthFromPiq(piqScore: number) {
+export function pageHealthFromOutlierScore(outlierScore: number) {
   return {
-    reach: Math.min(98, Math.max(55, piqScore + 8)),
-    shares: Math.min(95, Math.max(50, piqScore - 4)),
-    comments: Math.min(96, Math.max(52, piqScore + 2)),
+    reach: Math.min(98, Math.max(55, outlierScore + 8)),
+    shares: Math.min(95, Math.max(50, outlierScore - 4)),
+    comments: Math.min(96, Math.max(52, outlierScore + 2)),
   };
 }
+
+/** @deprecated Use pageHealthFromOutlierScore */
+export const pageHealthFromPiq = pageHealthFromOutlierScore;

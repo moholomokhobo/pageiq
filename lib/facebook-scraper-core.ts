@@ -1,3 +1,10 @@
+import type { MonetizationIntel } from "@/lib/cpm-intelligence";
+import {
+  calculateMonetizationIntel,
+  inferContentTypeFromPostTypes,
+} from "@/lib/cpm-intelligence";
+import { calculateOutlierScore } from "@/lib/outlier-score";
+
 export type PostType = "image" | "video" | "text" | "reel";
 
 export type ScrapedPost = {
@@ -30,9 +37,12 @@ export type FacebookPageStats = {
   postsLast30Days: number;
   postsThisMonth: number;
   postsToday: number;
-  piqScore: number;
+  outlierScore: number;
   samplePostsAnalysis: boolean;
   profilePictureUrl?: string;
+  /** Detected home country from page metadata; null when unknown */
+  homeCountry: string | null;
+  monetization: MonetizationIntel;
   outlierPosts: OutlierPostResult[];
 };
 
@@ -294,18 +304,7 @@ export function calculateEngagementRate(
   return Number(Math.min(12, baseline + activityBoost).toFixed(1));
 }
 
-export function calculatePiqScore(
-  followers: number,
-  engagementRate: number,
-  postsLast30Days: number
-): number {
-  const reachScore = Math.min(35, Math.log10(Math.max(followers, 100)) * 8);
-  const engagementScore = Math.min(40, engagementRate * 5.5);
-  const activityScore = Math.min(25, postsLast30Days * 2);
-  return Math.round(
-    Math.min(100, Math.max(0, reachScore + engagementScore + activityScore))
-  );
-}
+export { calculateOutlierScore } from "@/lib/outlier-score";
 
 export function findOutlierPosts(posts: ScrapedPost[]): OutlierPostResult[] {
   const withEngagement = posts.filter((post) => post.totalEngagement > 0);
@@ -340,16 +339,27 @@ export function buildPageStatsFromPosts(
   followers: number,
   posts: ScrapedPost[],
   samplePostsAnalysis = false,
-  profilePictureUrl?: string
+  profilePictureUrl?: string,
+  homeCountry?: string
 ): FacebookPageStats {
   const engagementRate = calculateEngagementRate(followers, posts);
   const outlierPosts = findOutlierPosts(posts);
   const postsLast30Days = posts.length;
   const postsThisMonth = countPostsThisMonth(posts);
   const postsToday = countPostsToday(posts);
-  const piqScore = calculatePiqScore(
+  const contentType = inferContentTypeFromPostTypes(posts.map((p) => p.type));
+  const monetization = calculateMonetizationIntel({
+    pageName,
+    followerCount: followers,
+    engagementRate,
+    contentType,
+    homeCountry,
+    postsLast30Days,
+  });
+  const outlierScore = calculateOutlierScore(
     followers,
     engagementRate,
+    monetization.monetizationScore,
     postsLast30Days
   );
 
@@ -361,9 +371,11 @@ export function buildPageStatsFromPosts(
     postsLast30Days,
     postsThisMonth,
     postsToday,
-    piqScore,
+    outlierScore,
     samplePostsAnalysis,
     profilePictureUrl,
+    homeCountry: homeCountry ?? null,
+    monetization,
     outlierPosts,
   };
 }

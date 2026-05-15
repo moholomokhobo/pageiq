@@ -1,9 +1,11 @@
 "use client";
 
 import type { PageResult } from "@/app/dashboard/page-search-bar";
+import { OutlierScoreLabel } from "@/components/outlier-score-label";
+import { PostOutlierBadge } from "@/components/score-badges";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
-  pageHealthFromPiq,
+  pageHealthFromOutlierScore,
   parseCountValue,
   parseEngagementRate,
   pickWinner,
@@ -14,11 +16,11 @@ import {
   compareMetricCardClass,
   compareMetricTextClass,
   multiplierTrafficLevelFromString,
-  piqLabel,
-  piqTrafficLevel,
+  outlierLabel,
+  outlierTrafficLevel,
   trafficTextClass,
 } from "@/lib/traffic-light";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, type ReactNode } from "react";
 
 const cardClass =
   "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-600 dark:bg-zinc-900";
@@ -49,7 +51,7 @@ async function fetchPage(query: string): Promise<PageResult> {
 type CompareWinners = {
   followers: CompareWinner;
   engagementRate: CompareWinner;
-  piqScore: CompareWinner;
+  outlierScore: CompareWinner;
   postsThisMonth: CompareWinner;
   outlierPosts: CompareWinner;
   reach: CompareWinner;
@@ -58,8 +60,8 @@ type CompareWinners = {
 };
 
 function computeWinners(left: PageResult, right: PageResult): CompareWinners {
-  const leftHealth = pageHealthFromPiq(left.piqScore);
-  const rightHealth = pageHealthFromPiq(right.piqScore);
+  const leftHealth = pageHealthFromOutlierScore(left.outlierScore);
+  const rightHealth = pageHealthFromOutlierScore(right.outlierScore);
 
   return {
     followers: pickWinner(
@@ -70,7 +72,7 @@ function computeWinners(left: PageResult, right: PageResult): CompareWinners {
       parseEngagementRate(left.engagementRate),
       parseEngagementRate(right.engagementRate)
     ),
-    piqScore: pickWinner(left.piqScore, right.piqScore),
+    outlierScore: pickWinner(left.outlierScore, right.outlierScore),
     postsThisMonth: pickWinner(left.postsThisMonth, right.postsThisMonth),
     outlierPosts: pickWinner(
       left.outlierPosts.length,
@@ -118,7 +120,7 @@ function MetricRow({
   side,
   winner,
 }: {
-  label: string;
+  label: ReactNode;
   value: string | number;
   side: "left" | "right";
   winner: CompareWinner;
@@ -155,7 +157,7 @@ function PageColumn({
   side: "left" | "right";
   winners: CompareWinners;
 }) {
-  const health = pageHealthFromPiq(result.piqScore);
+  const health = pageHealthFromOutlierScore(result.outlierScore);
   const healthMetrics = [
     { key: "reach" as const, label: "Reach", value: health.reach },
     { key: "shares" as const, label: "Shares", value: health.shares },
@@ -199,10 +201,10 @@ function PageColumn({
           winner={winners.engagementRate}
         />
         <MetricRow
-          label="PIQ score"
-          value={`${result.piqScore}/100`}
+          label={<OutlierScoreLabel />}
+          value={`${result.outlierScore}/100`}
           side={side}
-          winner={winners.piqScore}
+          winner={winners.outlierScore}
         />
         <MetricRow
           label="Posts this month"
@@ -222,9 +224,12 @@ function PageColumn({
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
           Page health
         </h3>
+        <div className="mt-1">
+          <OutlierScoreLabel />
+        </div>
         <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          <span className={trafficTextClass(piqTrafficLevel(result.piqScore))}>
-            {piqLabel(result.piqScore)} · PIQ {result.piqScore}/100
+          <span className={trafficTextClass(outlierTrafficLevel(result.outlierScore))}>
+            {outlierLabel(result.outlierScore)} · Outlier {result.outlierScore}/100
           </span>
         </p>
         <div className="mt-5 space-y-4">
@@ -278,13 +283,16 @@ function PageColumn({
                   <span className="inline-flex shrink-0 rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-semibold capitalize text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                     {post.type}
                   </span>
-                  <span
-                    className={`shrink-0 text-sm font-semibold ${trafficTextClass(
-                      multiplierTrafficLevelFromString(post.multiplier)
-                    )}`}
-                  >
-                    {post.multiplier}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <PostOutlierBadge multiplier={post.multiplier} />
+                    <span
+                      className={`text-sm font-semibold ${trafficTextClass(
+                        multiplierTrafficLevelFromString(post.multiplier)
+                      )}`}
+                    >
+                      {post.multiplier}
+                    </span>
+                  </div>
                 </div>
                 <p className="mt-2 line-clamp-2 text-sm text-slate-700 dark:text-zinc-200">
                   {post.preview}
@@ -415,7 +423,7 @@ export function CompareClient() {
             </p>
             <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
               Enter two Facebook page URLs or names above and click Compare to
-              see followers, engagement, PIQ score, outliers, and page health
+              see followers, engagement, Outlier, outliers, and page health
               side by side.
             </p>
           </div>

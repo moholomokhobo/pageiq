@@ -8,8 +8,8 @@ export type NavLabel =
   | "AI Tools";
 
 const navItems: { label: NavLabel; href: string }[] = [
-  { label: "Dashboard", href: "/dashboard" },
   { label: "Discover", href: "/discover" },
+  { label: "Dashboard", href: "/dashboard" },
   { label: "Watchlist", href: "/watchlist" },
   { label: "Compare", href: "/compare" },
   { label: "AI Tools", href: "/ai-tools" },
@@ -42,7 +42,7 @@ function PageLogo() {
 
 export function AppSidebar({ active }: { active: NavLabel }) {
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-blue-100 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <aside className="flex h-full w-full flex-col overflow-hidden border-r border-blue-100 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="border-b border-blue-100 px-5 py-5 dark:border-zinc-800">
         <PageLogo />
       </div>

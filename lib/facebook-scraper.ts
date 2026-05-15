@@ -16,7 +16,7 @@ export type {
 
 export {
   calculateEngagementRate,
-  calculatePiqScore,
+  calculateOutlierScore,
   findOutlierPosts,
   generateMockPosts,
 } from "@/lib/facebook-scraper-core";

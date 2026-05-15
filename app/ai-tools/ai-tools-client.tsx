@@ -5,7 +5,7 @@ import type { HookAnalyzerResponse } from "@/app/api/ai/hook-analyzer/route";
 import type { PostingScheduleResponse } from "@/app/api/ai/posting-schedule/route";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
-  piqTrafficLevel,
+  outlierTrafficLevel,
   trafficTextClass,
 } from "@/lib/traffic-light";
 import { FormEvent, useState } from "react";
@@ -207,7 +207,7 @@ function HookAnalyzerTool() {
               </p>
               <p
                 className={`text-4xl font-bold ${trafficTextClass(
-                  piqTrafficLevel(result.score)
+                  outlierTrafficLevel(result.score)
                 )}`}
               >
                 {result.score}

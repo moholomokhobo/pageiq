@@ -3,11 +3,14 @@ import { parseEngagementRate } from "@/lib/metrics";
 export type TrafficLevel = "good" | "average" | "poor";
 export type MultiplierLevel = "average" | "good" | "excellent";
 
-export function piqTrafficLevel(score: number): TrafficLevel {
+export function outlierTrafficLevel(score: number): TrafficLevel {
   if (score >= 71) return "good";
   if (score >= 41) return "average";
   return "poor";
 }
+
+/** @deprecated Use outlierTrafficLevel */
+export const piqTrafficLevel = outlierTrafficLevel;
 
 export function engagementTrafficLevel(ratePercent: number): TrafficLevel {
   if (ratePercent > 3) return "good";
@@ -84,12 +87,15 @@ export function trafficRingClass(level: TrafficLevel): string {
   return ringByLevel[level];
 }
 
-export function piqLabel(score: number): string {
-  const level = piqTrafficLevel(score);
-  if (level === "good") return "Strong";
-  if (level === "average") return "Growing";
-  return "Needs work";
+export function outlierLabel(score: number): string {
+  const level = outlierTrafficLevel(score);
+  if (level === "good") return "Hidden gem potential";
+  if (level === "average") return "Rising outlier";
+  return "Building audience";
 }
+
+/** @deprecated Use outlierLabel */
+export const piqLabel = outlierLabel;
 
 /** Compare page: winner green, loser red, tie neutral */
 export function compareMetricTextClass(

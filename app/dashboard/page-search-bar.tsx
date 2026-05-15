@@ -1,5 +1,6 @@
 "use client";
 
+import type { MonetizationIntel } from "@/lib/cpm-intelligence";
 import { FormEvent } from "react";
 
 export type OutlierPost = {
@@ -21,9 +22,11 @@ export type PageResult = {
   postsLast30Days: number;
   postsThisMonth: number;
   postsToday: number;
-  piqScore: number;
+  outlierScore: number;
   samplePostsAnalysis: boolean;
   profilePictureUrl?: string;
+  homeCountry: string | null;
+  monetization: MonetizationIntel;
   outlierPosts: OutlierPost[];
 };
 
