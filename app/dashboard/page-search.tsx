@@ -4,41 +4,11 @@ import { FormEvent, useState } from "react";
 
 type PageResult = {
   pageName: string;
-  followers: string;
+  followerCount: string;
   engagementRate: string;
+  recentPostsCount: number;
   piqScore: number;
 };
-
-function generateMockResult(query: string): PageResult {
-  const hash = query
-    .toLowerCase()
-    .split("")
-    .reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0);
-  const abs = Math.abs(hash);
-
-  const followerRaw = 48_000 + (abs % 2_450_000);
-  const followers =
-    followerRaw >= 1_000_000
-      ? `${(followerRaw / 1_000_000).toFixed(1)}M`
-      : `${(followerRaw / 1_000).toFixed(1)}K`;
-
-  const engagement = (2 + (abs % 650) / 100).toFixed(1);
-  const piqScore = 58 + (abs % 38);
-
-  const pageName = query
-    .trim()
-    .split(/[\s-_]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-
-  return {
-    pageName: pageName || "Unknown Page",
-    followers,
-    engagementRate: `${engagement}%`,
-    piqScore,
-  };
-}
 
 function piqLabel(score: number) {
   if (score >= 85) return "Exceptional";
@@ -50,18 +20,41 @@ function piqLabel(score: number) {
 export function PageSearch() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<PageResult | null>(null);
-  const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSearch(e: FormEvent) {
+  async function handleSearch(e: FormEvent) {
     e.preventDefault();
     const trimmed = query.trim();
+
     if (!trimmed) {
       setResult(null);
-      setSearched(false);
+      setError(null);
       return;
     }
-    setResult(generateMockResult(trimmed));
-    setSearched(true);
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const response = await fetch(
+        `/api/search?q=${encodeURIComponent(trimmed)}`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Search failed. Please try again.");
+      }
+
+      setResult(data as PageResult);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Search failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   const initials = result
@@ -95,18 +88,29 @@ export function PageSearch() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Facebook pages…"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+            disabled={loading}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
           />
         </div>
         <button
           type="submit"
-          className="shrink-0 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-700"
+          disabled={loading}
+          className="shrink-0 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Search
+          {loading ? "Searching…" : "Search"}
         </button>
       </form>
 
-      {searched && result && (
+      {error && (
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {error}
+        </p>
+      )}
+
+      {result && (
         <article className="mt-4 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-lg shadow-blue-900/5">
           <div className="flex items-center gap-4 border-b border-blue-50 bg-gradient-to-r from-blue-50 to-white px-5 py-4">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-sm font-bold text-white shadow-md shadow-blue-600/30">
@@ -116,7 +120,7 @@ export function PageSearch() {
               <p className="truncate text-base font-semibold text-slate-900">
                 {result.pageName}
               </p>
-              <p className="text-xs text-slate-500">Facebook Page · Mock result</p>
+              <p className="text-xs text-slate-500">Facebook Page</p>
             </div>
             <div className="text-right">
               <p className="text-xs font-medium uppercase tracking-wide text-blue-600">
@@ -129,14 +133,14 @@ export function PageSearch() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 divide-x divide-blue-50 px-2 py-4">
-            <div className="px-3 text-center">
+          <div className="grid grid-cols-2 divide-x divide-y divide-blue-50 sm:grid-cols-4 sm:divide-y-0">
+            <div className="px-4 py-4 text-center">
               <p className="text-xs font-medium text-slate-500">Followers</p>
               <p className="mt-1 text-lg font-bold text-slate-900">
-                {result.followers}
+                {result.followerCount}
               </p>
             </div>
-            <div className="px-3 text-center">
+            <div className="px-4 py-4 text-center">
               <p className="text-xs font-medium text-slate-500">
                 Engagement rate
               </p>
@@ -144,7 +148,13 @@ export function PageSearch() {
                 {result.engagementRate}
               </p>
             </div>
-            <div className="px-3 text-center">
+            <div className="px-4 py-4 text-center">
+              <p className="text-xs font-medium text-slate-500">Recent posts</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">
+                {result.recentPostsCount}
+              </p>
+            </div>
+            <div className="px-4 py-4 text-center">
               <p className="text-xs font-medium text-slate-500">Status</p>
               <p className="mt-1 text-lg font-bold text-blue-600">
                 {piqLabel(result.piqScore)}
@@ -155,7 +165,7 @@ export function PageSearch() {
           <div className="border-t border-blue-50 bg-slate-50/50 px-5 py-3">
             <div className="flex items-center justify-between text-xs text-slate-500">
               <span>PIQ performance index</span>
-              <span>{result.piqScore}% of benchmark</span>
+              <span>{result.piqScore}/100 · {piqLabel(result.piqScore)}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
               <div
