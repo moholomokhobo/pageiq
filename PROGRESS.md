@@ -1,16 +1,17 @@
 # PageIQ Progress
 
-PageIQ Next.js app is running at localhost:3000.
+**Live:** [pageiq-five.vercel.app](https://pageiq-five.vercel.app)  
+**Repo:** [github.com/moholomokhobo/pageiq](https://github.com/moholomokhobo/pageiq)  
+**Local:** localhost:3000
 
 ## Completed
 
-- Landing page (`app/page.tsx`)
-- Login (`app/login/page.tsx`)
-- Signup (`app/signup/page.tsx`)
-- Dashboard (`app/dashboard/page.tsx`)
-- All navbar links connected
-- Dashboard search bar shows mock results
+- Landing page
+- Login
+- Signup
+- Dashboard with search (mock results)
 
-## Next step
+## Next session
 
-Adding a real signup form with Supabase database to store users.
+1. Add Supabase database for real user signups
+2. Build the real Facebook page analytics feature
