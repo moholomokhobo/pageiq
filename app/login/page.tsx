@@ -29,7 +29,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/discover");
+    router.push("/overview");
   }
 
   return (

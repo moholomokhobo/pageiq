@@ -1,5 +1,11 @@
+import { calculateEstimatedViewsFromFeedPosts } from "@/lib/estimated-views-from-posts";
+import { scrapeFacebookPagePosts } from "@/lib/facebook-posts-apify";
 import { resolveFacebookPageUrls } from "@/lib/facebook-page-url";
 import { extractCountryFromApifyRecord } from "@/lib/page-country";
+import {
+  mapFeedPostsToPopularPosts,
+  POPULAR_POST_LIMIT,
+} from "@/lib/pages-list-data";
 import {
   buildPageStats,
   buildPageStatsFromPosts,
@@ -14,6 +20,8 @@ import {
 } from "@/lib/facebook-scraper-core";
 
 const APIFY_ACTOR = "apify~facebook-pages-scraper";
+/** Fetch enough posts to estimate per-type averages */
+const POSTS_FETCH_LIMIT = 20;
 const APIFY_API_BASE = "https://api.apify.com/v2";
 const POLL_INTERVAL_MS = 3_000;
 const MAX_WAIT_MS = 90_000;
@@ -315,9 +323,45 @@ function buildStatsFromApifyRecord(
   return { ...stats, homeCountry };
 }
 
+function livePageId(searchQuery: string) {
+  return `live-${searchQuery
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")}`;
+}
+
+async function attachPopularPosts(
+  stats: FacebookPageStats,
+  pageUrl: string,
+  searchQuery: string,
+  apiKey: string
+): Promise<FacebookPageStats> {
+  try {
+    const feedPosts = await scrapeFacebookPagePosts(
+      pageUrl,
+      apiKey,
+      POSTS_FETCH_LIMIT
+    );
+    if (feedPosts.length === 0) return stats;
+
+    const estimates = calculateEstimatedViewsFromFeedPosts(feedPosts);
+
+    return {
+      ...stats,
+      popularPosts: mapFeedPostsToPopularPosts(feedPosts, livePageId(searchQuery)),
+      ...estimates,
+    };
+  } catch {
+    return stats;
+  }
+}
+
 async function scrapeWithApify(
   pageUrl: string,
-  apiKey: string
+  apiKey: string,
+  searchQuery: string
 ): Promise<FacebookPageStats | null> {
   const runId = await startApifyRun(pageUrl, apiKey);
   if (!runId) return null;
@@ -328,7 +372,10 @@ async function scrapeWithApify(
   const items = await fetchDatasetItems(datasetId, apiKey);
   if (items.length === 0) return null;
 
-  return buildStatsFromApifyRecord(items[0], pageUrl);
+  const stats = buildStatsFromApifyRecord(items[0], pageUrl);
+  if (!stats) return null;
+
+  return attachPopularPosts(stats, pageUrl, searchQuery, apiKey);
 }
 
 /**
@@ -351,7 +398,7 @@ export async function scrapeFacebookPageLight(
   if (apiKey) {
     for (const url of urls) {
       try {
-        const stats = await scrapeWithApify(url, apiKey);
+        const stats = await scrapeWithApify(url, apiKey, query);
         if (stats) return stats;
       } catch {
         // try next URL or fall back to mock

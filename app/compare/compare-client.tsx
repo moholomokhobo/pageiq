@@ -3,7 +3,7 @@
 import type { PageResult } from "@/app/dashboard/page-search-bar";
 import { OutlierScoreLabel } from "@/components/outlier-score-label";
 import { PostOutlierBadge } from "@/components/score-badges";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppTopActions } from "@/components/app-top-actions";
 import {
   pageHealthFromOutlierScore,
   parseCountValue,
@@ -366,7 +366,7 @@ export function CompareClient() {
                 Compare two Facebook pages side by side
               </p>
             </div>
-            <ThemeToggle />
+            <AppTopActions />
           </div>
 
           <form onSubmit={handleCompare} className="flex flex-col gap-3">

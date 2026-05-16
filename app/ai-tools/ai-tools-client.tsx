@@ -3,7 +3,7 @@
 import type { CaptionsResponse } from "@/app/api/ai/captions/route";
 import type { HookAnalyzerResponse } from "@/app/api/ai/hook-analyzer/route";
 import type { PostingScheduleResponse } from "@/app/api/ai/posting-schedule/route";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppTopActions } from "@/components/app-top-actions";
 import {
   outlierTrafficLevel,
   trafficTextClass,
@@ -399,7 +399,7 @@ export function AiToolsClient() {
               AI-powered helpers for Facebook content and growth
             </p>
           </div>
-          <ThemeToggle />
+          <AppTopActions />
         </div>
       </header>
 

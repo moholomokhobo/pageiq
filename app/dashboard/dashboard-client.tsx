@@ -1,6 +1,6 @@
 "use client";
 
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppTopActions } from "@/components/app-top-actions";
 import { normalizePageUrl } from "@/lib/page-url";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -675,7 +675,7 @@ export function DashboardClient() {
                   : "Search a Facebook page to view analytics"}
               </p>
             </div>
-            <ThemeToggle />
+            <AppTopActions />
           </div>
           <PageSearchBar
             query={query}

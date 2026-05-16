@@ -31,7 +31,7 @@ function mapPostTypeToContentType(type: string): DiscoverContentType {
   }
 }
 
-function inferCategory(pageName: string): DiscoverCategory {
+export function inferCategoryFromPageName(pageName: string): DiscoverCategory {
   const name = pageName.toLowerCase();
   if (/news|times|post|cnn|bbc/.test(name)) return "News";
   if (/sport|fc|nba|nfl|espn/.test(name)) return "Sports";
@@ -59,7 +59,7 @@ export function pageResultToTrendingPage(
   return {
     id: livePageId(searchQuery),
     pageName: result.pageName,
-    category: inferCategory(result.pageName),
+    category: inferCategoryFromPageName(result.pageName),
     country: result.homeCountry ?? "Not listed",
     contentType,
     timePeriod: "Today",

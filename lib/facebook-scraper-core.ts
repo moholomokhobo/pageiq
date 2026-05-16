@@ -1,4 +1,5 @@
 import type { MonetizationIntel } from "@/lib/cpm-intelligence";
+import type { PopularPost } from "@/lib/pages-list-data";
 import {
   calculateMonetizationIntel,
   inferContentTypeFromPostTypes,
@@ -44,6 +45,12 @@ export type FacebookPageStats = {
   homeCountry: string | null;
   monetization: MonetizationIntel;
   outlierPosts: OutlierPostResult[];
+  /** Latest feed posts for Pages list (from facebook-posts-scraper) */
+  popularPosts?: PopularPost[];
+  /** Estimated from scraped post engagement (likes × type multiplier) */
+  estimatedAvgViewsPerReel?: number;
+  estimatedAvgViewsPerImage?: number;
+  estimatedAvgViewsPerText?: number;
 };
 
 export function formatCount(value: number): string {

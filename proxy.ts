@@ -38,6 +38,8 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/watchlist") ||
     request.nextUrl.pathname.startsWith("/compare") ||
     request.nextUrl.pathname.startsWith("/ai-tools") ||
+    request.nextUrl.pathname.startsWith("/overview") ||
+    request.nextUrl.pathname.startsWith("/pages") ||
     request.nextUrl.pathname.startsWith("/discover");
 
   if (!user && isProtected) {
@@ -52,7 +54,7 @@ export async function proxy(request: NextRequest) {
 
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/discover";
+    url.pathname = "/overview";
     return NextResponse.redirect(url);
   }
 
@@ -70,6 +72,10 @@ export const config = {
     "/compare/:path*",
     "/ai-tools",
     "/ai-tools/:path*",
+    "/overview",
+    "/overview/:path*",
+    "/pages",
+    "/pages/:path*",
     "/discover",
     "/discover/:path*",
   ],

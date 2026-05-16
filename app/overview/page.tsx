@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/app-shell";
-import { OverviewClient } from "@/app/overview/overview-client";
 import { fetchAllPagesFromDatabase } from "@/lib/overview-queries";
+import { OverviewClient } from "./overview-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function DiscoverPage() {
+export default async function OverviewPage() {
   const sourceRows = await fetchAllPagesFromDatabase();
 
   return (

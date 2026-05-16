@@ -1,3 +1,4 @@
+import { supabaseClientOptions } from "@/lib/supabase/config";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -8,6 +9,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      ...supabaseClientOptions(),
       cookies: {
         getAll() {
           return cookieStore.getAll();

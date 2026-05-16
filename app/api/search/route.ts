@@ -1,8 +1,9 @@
+import { persistScrapedPageToDatabase } from "@/lib/persist-scraped-page";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   console.log(
@@ -35,6 +36,13 @@ export async function GET(request: Request) {
       : await (
           await import("@/lib/facebook-scraper")
         ).scrapeFacebookPage(trimmed);
+
+    if (useLightScraper) {
+      const persisted = await persistScrapedPageToDatabase(trimmed, data);
+      if (!persisted.ok && persisted.error) {
+        console.warn("[search] pages_database upsert:", persisted.error);
+      }
+    }
 
     return NextResponse.json(data);
   } catch (error) {
