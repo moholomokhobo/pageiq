@@ -16,7 +16,7 @@ import {
 } from "@/lib/traffic-light";
 import { EngagementChart } from "@/components/engagement-chart";
 import { OutlierScoreLabel } from "@/components/outlier-score-label";
-import { PostOutlierBadge } from "@/components/score-badges";
+import { DataSourceBadge, PostOutlierBadge } from "@/components/score-badges";
 import { MonetizationPanel } from "@/components/monetization-intelligence";
 import { calculateOutlierScore } from "@/lib/outlier-score";
 import { calculateMonetizationIntel } from "@/lib/cpm-intelligence";
@@ -298,9 +298,12 @@ function SearchResultsMain({
               imageUrl={result.profilePictureUrl}
             />
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                {result.pageName}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                  {result.pageName}
+                </h2>
+                <DataSourceBadge fromCache={result.fromCache} />
+              </div>
               <p className="text-xs text-slate-500 dark:text-zinc-400">Facebook Page</p>
               {result.about ? (
                 <p className="mt-0.5 line-clamp-2 max-w-2xl text-xs text-slate-600 dark:text-zinc-300">

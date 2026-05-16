@@ -1,6 +1,16 @@
+import type { MonetizationIntel } from "@/lib/cpm-intelligence";
 import { inferCategoryFromPageName } from "@/lib/discover-live";
-import type { FacebookPageStats } from "@/lib/facebook-scraper-core";
+import type {
+  FacebookPageStats,
+  OutlierPostResult,
+} from "@/lib/facebook-scraper-core";
 import { resolveFacebookPageUrls } from "@/lib/facebook-page-url";
+import type { PopularPost } from "@/lib/pages-list-data";
+import {
+  normalizeMonetization,
+  normalizeOutlierPosts,
+  normalizePopularPosts,
+} from "@/lib/search-api-response";
 import { parseCountValue } from "@/lib/metrics";
 import { parseMultiplier } from "@/lib/traffic-light";
 
@@ -21,7 +31,114 @@ export type PageDatabaseRow = {
   last_scraped_at: string;
   is_rising_star: boolean;
   is_outlier: boolean;
+  profile_picture_url?: string | null;
+  description?: string | null;
+  popular_posts?: PopularPost[] | null;
+  outlier_posts?: OutlierPostResult[] | null;
+  engagement_rate?: number | null;
+  posts_last_30_days?: number;
+  posts_this_month?: number;
+  posts_today?: number;
+  sample_posts_analysis?: boolean;
+  monetization?: MonetizationIntel | null;
 };
+
+function isUsableProfilePictureUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.hostname.includes("facebook.com") &&
+      parsed.pathname.includes("/photo")
+    ) {
+      return false;
+    }
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Cached row is complete enough to serve (requires a direct profile image URL). */
+export function cachedRowHasProfilePicture(
+  row: PageDatabaseRow | Record<string, unknown>
+): boolean {
+  const normalized = normalizePageDatabaseRow(row);
+  const url = normalized.profile_picture_url?.trim();
+  return Boolean(url && isUsableProfilePictureUrl(url));
+}
+
+/** Parse "15%" or 15 from DB into a numeric rate for storage. */
+export function parseEngagementRateForDatabase(
+  engagementRate: string | number | null | undefined
+): number | null {
+  if (engagementRate == null) return null;
+  if (typeof engagementRate === "number") {
+    return Number.isFinite(engagementRate) ? engagementRate : null;
+  }
+  const parsed = parseFloat(String(engagementRate).replace("%", "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Format numeric DB rate as "15%" for API responses. */
+export function formatEngagementRateFromDatabase(
+  engagementRate: number | string | null | undefined
+): string {
+  const value = parseEngagementRateForDatabase(engagementRate);
+  if (value == null) return "0%";
+  return `${value}%`;
+}
+
+/** True when row has a full scrape snapshot (post-migration or fresh upsert). */
+export function pageDatabaseRowHasFullScrape(row: PageDatabaseRow): boolean {
+  return Boolean(
+    parseEngagementRateForDatabase(row.engagement_rate) != null &&
+      row.monetization &&
+      typeof row.monetization === "object" &&
+      row.description != null
+  );
+}
+
+/** Normalize raw Supabase row (parse jsonb strings, coerce numeric fields). */
+export function normalizePageDatabaseRow(
+  raw: PageDatabaseRow | Record<string, unknown>
+): PageDatabaseRow {
+  const row = raw as Record<string, unknown>;
+
+  return {
+    id: String(row.id ?? ""),
+    page_url: String(row.page_url ?? ""),
+    page_name: String(row.page_name ?? ""),
+    category: String(row.category ?? ""),
+    country: row.country != null ? String(row.country) : null,
+    followers: Number(row.followers) || 0,
+    avg_views_reel: Number(row.avg_views_reel) || 0,
+    avg_views_image: Number(row.avg_views_image) || 0,
+    avg_views_text: Number(row.avg_views_text) || 0,
+    outlier_score: Number(row.outlier_score) || 0,
+    monetization_score: Number(row.monetization_score) || 0,
+    days_since_start: Number(row.days_since_start) || 0,
+    total_posts: Number(row.total_posts) || 0,
+    last_scraped_at: String(row.last_scraped_at ?? ""),
+    is_rising_star: Boolean(row.is_rising_star),
+    is_outlier: Boolean(row.is_outlier),
+    profile_picture_url:
+      typeof row.profile_picture_url === "string"
+        ? row.profile_picture_url.trim() || null
+        : null,
+    description:
+      row.description != null ? String(row.description) : null,
+    popular_posts: normalizePopularPosts(row.popular_posts),
+    outlier_posts: normalizeOutlierPosts(row.outlier_posts),
+    engagement_rate: parseEngagementRateForDatabase(
+      row.engagement_rate as string | number | null | undefined
+    ),
+    posts_last_30_days: Number(row.posts_last_30_days) || 0,
+    posts_this_month: Number(row.posts_this_month) || 0,
+    posts_today: Number(row.posts_today) || 0,
+    sample_posts_analysis: Boolean(row.sample_posts_analysis),
+    monetization: normalizeMonetization(row.monetization),
+  };
+}
 
 export type PageDatabaseInsert = Omit<
   PageDatabaseRow,
@@ -125,6 +242,17 @@ export function mapScrapeToPageInsert(
     ),
     is_rising_star: isRisingStar,
     is_outlier: isOutlier,
+    profile_picture_url: stats.profilePictureUrl ?? null,
+    description: stats.about,
+    popular_posts: stats.popularPosts ?? [],
+    outlier_posts: stats.outlierPosts,
+    engagement_rate:
+      parseEngagementRateForDatabase(stats.engagementRate) ?? null,
+    posts_last_30_days: stats.postsLast30Days,
+    posts_this_month: stats.postsThisMonth,
+    posts_today: stats.postsToday,
+    sample_posts_analysis: stats.samplePostsAnalysis,
+    monetization: stats.monetization,
   };
 }
 

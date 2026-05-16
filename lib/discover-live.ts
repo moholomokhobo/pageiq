@@ -72,5 +72,6 @@ export function pageResultToTrendingPage(
     source: "live",
     monetization: result.monetization,
     topPostMultiplier: topPost?.multiplier,
+    fromCache: result.fromCache,
   };
 }

@@ -1,11 +1,18 @@
 import { calculateEstimatedViewsFromFeedPosts } from "@/lib/estimated-views-from-posts";
-import { scrapeFacebookPagePosts } from "@/lib/facebook-posts-apify";
+import {
+  scrapeFacebookPagePosts,
+  type ScrapedFacebookFeedPost,
+} from "@/lib/facebook-posts-apify";
 import { resolveFacebookPageUrls } from "@/lib/facebook-page-url";
-import { extractCountryFromApifyRecord } from "@/lib/page-country";
+import {
+  extractCountryFromApifyRecord,
+  pickApifyLocationFields,
+} from "@/lib/page-country";
 import {
   mapFeedPostsToPopularPosts,
   POPULAR_POST_LIMIT,
 } from "@/lib/pages-list-data";
+import { inferCategoryFromPageName } from "@/lib/discover-live";
 import {
   buildPageStats,
   buildPageStatsFromPosts,
@@ -18,6 +25,7 @@ import {
   type PostType,
   type ScrapedPost,
 } from "@/lib/facebook-scraper-core";
+import { persistScrapedPageToDatabase } from "@/lib/persist-scraped-page";
 
 const APIFY_ACTOR = "apify~facebook-pages-scraper";
 /** Fetch enough posts to estimate per-type averages */
@@ -68,11 +76,24 @@ type ApifyPageRecord = {
   info?: string[];
   profilePictureUrl?: string;
   profilePhoto?: string;
+  coverPhotoUrl?: string;
+  profile_picture_url?: string;
+  profilePicUrl?: string;
+  image?: string;
+  picture?: string;
+  personalProfile?: unknown;
   city?: unknown;
   country?: unknown;
   location?: unknown;
   address?: unknown;
   place?: unknown;
+  homeTown?: unknown;
+  hometown?: unknown;
+  currentCity?: unknown;
+  current_city?: unknown;
+  home_town?: unknown;
+  state?: unknown;
+  region?: unknown;
   pageAddress?: unknown;
   addressStreet?: unknown;
   posts?: ApifyPostRecord[];
@@ -166,10 +187,107 @@ function parseTalkingAbout(info: string[] = []): number {
   return 0;
 }
 
-function extractProfilePictureUrl(record: ApifyPageRecord): string | undefined {
-  const direct = record.profilePictureUrl?.trim();
-  if (direct?.startsWith("http")) return direct;
+/** Apify may return profilePhoto as a facebook.com/photo page — not usable in <img src>. */
+function isDirectImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.hostname.includes("facebook.com") &&
+      parsed.pathname.includes("/photo")
+    ) {
+      return false;
+    }
+    if (parsed.hostname.includes("fbcdn.net")) return true;
+    if (/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(parsed.pathname)) return true;
+    return url.startsWith("http");
+  } catch {
+    return false;
+  }
+}
+
+function pickImageUrlFromUnknown(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return isDirectImageUrl(trimmed) ? trimmed : undefined;
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>;
+    for (const key of [
+      "uri",
+      "url",
+      "src",
+      "href",
+      "profilePictureUrl",
+      "small",
+      "medium",
+      "large",
+    ]) {
+      const nested = pickImageUrlFromUnknown(obj[key]);
+      if (nested) return nested;
+    }
+  }
   return undefined;
+}
+
+function extractProfilePictureUrl(record: ApifyPageRecord): string | undefined {
+  const raw = record as Record<string, unknown>;
+  const candidates: unknown[] = [
+    record.profilePictureUrl,
+    raw.profile_picture_url,
+    raw.profilePicUrl,
+    raw.profile_pic_url,
+    raw.image,
+    raw.picture,
+    raw.avatar,
+    raw.pageProfilePicture,
+    raw.personalProfile,
+  ];
+
+  for (const candidate of candidates) {
+    const url = pickImageUrlFromUnknown(candidate);
+    if (url) return url;
+  }
+
+  return undefined;
+}
+
+function logApifyProfileAndPostsFields(
+  record: ApifyPageRecord,
+  pageLabel: string
+) {
+  const raw = record as Record<string, unknown>;
+  const mediaKeys = Object.keys(raw).filter((key) =>
+    /profile|picture|photo|image|avatar|cover/i.test(key)
+  );
+  const mediaSnapshot = Object.fromEntries(
+    mediaKeys.map((key) => [key, raw[key]])
+  );
+
+  const pagePosts = [...(record.posts ?? []), ...(record.recentPosts ?? [])];
+
+  console.log("[Apify] Profile / media fields for", pageLabel, {
+    mediaSnapshot,
+    extractedProfilePictureUrl: extractProfilePictureUrl(record),
+    profilePictureUrl: record.profilePictureUrl ?? null,
+    profilePhoto: record.profilePhoto ?? null,
+    coverPhotoUrl: record.coverPhotoUrl ?? null,
+    pagePostsCount: pagePosts.length,
+    pagePostsSample: pagePosts.slice(0, 2).map((post) => ({
+      text: (post.text ?? post.message ?? post.postText ?? "").slice(0, 80),
+      likes: post.likes ?? post.likesCount,
+      url: post.url,
+      type: post.type,
+    })),
+  });
+}
+
+function extractCategoryFromApifyRecord(
+  record: ApifyPageRecord,
+  pageName: string
+): string {
+  const cats = record.categories?.filter((c) => c && c !== "Page");
+  if (cats?.length) return cats[0];
+  return inferCategoryFromPageName(pageName);
 }
 
 function composeAbout(record: ApifyPageRecord): string {
@@ -289,7 +407,24 @@ function buildStatsFromApifyRecord(
   }
 
   const profilePictureUrl = extractProfilePictureUrl(record);
+  const pageLabel =
+    record.title?.trim() || record.pageName?.trim() || fallbackName;
+
+  console.log(
+    "[Apify location] raw fields for",
+    pageLabel,
+    JSON.stringify(pickApifyLocationFields(record as Record<string, unknown>), null, 2)
+  );
+
   const homeCountry = extractCountryFromApifyRecord(record);
+
+  console.log(
+    "[Apify location] extracted country for",
+    pageLabel,
+    ":",
+    homeCountry ?? "(none)"
+  );
+
   const stats = buildPageStatsFromPosts(
     pageName,
     about,
@@ -332,30 +467,116 @@ function livePageId(searchQuery: string) {
     .replace(/^-+|-+$/g, "")}`;
 }
 
+function apifyPagePostToFeedPost(
+  record: ApifyPostRecord
+): ScrapedFacebookFeedPost | null {
+  const text =
+    record.text?.trim() ||
+    record.message?.trim() ||
+    record.postText?.trim() ||
+    "";
+
+  if (!text) return null;
+
+  const likes = Number(record.likes ?? record.likesCount ?? 0) || 0;
+  const comments = Number(record.comments ?? record.commentsCount ?? 0) || 0;
+  const shares = Number(record.shares ?? record.sharesCount ?? 0) || 0;
+  const postedAtDate = parsePostDate(
+    record.timestamp ?? record.time ?? record.date
+  );
+  const postType = normalizePostType(record.type);
+  const feedType: ScrapedFacebookFeedPost["postType"] =
+    postType === "reel" ? "reel" : postType === "image" ? "image" : "text";
+
+  return {
+    text,
+    likes,
+    comments,
+    shares,
+    postedAt: postedAtDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }),
+    postedAtDate,
+    postType: feedType,
+    postUrl: record.url?.trim().startsWith("http") ? record.url.trim() : undefined,
+  };
+}
+
+function popularPostsFromApifyPageRecord(
+  record: ApifyPageRecord,
+  searchQuery: string
+): FacebookPageStats["popularPosts"] {
+  const pagePosts = [...(record.posts ?? []), ...(record.recentPosts ?? [])];
+  const feedPosts = pagePosts
+    .map((post) => apifyPagePostToFeedPost(post))
+    .filter((post): post is ScrapedFacebookFeedPost => post != null);
+
+  if (feedPosts.length === 0) return undefined;
+
+  return mapFeedPostsToPopularPosts(feedPosts, livePageId(searchQuery));
+}
+
 async function attachPopularPosts(
   stats: FacebookPageStats,
   pageUrl: string,
   searchQuery: string,
-  apiKey: string
+  apiKey: string,
+  pageRecord?: ApifyPageRecord
 ): Promise<FacebookPageStats> {
+  const pageId = livePageId(searchQuery);
+
   try {
     const feedPosts = await scrapeFacebookPagePosts(
       pageUrl,
       apiKey,
       POSTS_FETCH_LIMIT
     );
-    if (feedPosts.length === 0) return stats;
 
-    const estimates = calculateEstimatedViewsFromFeedPosts(feedPosts);
+    console.log("[Apify] facebook-posts-scraper returned", feedPosts.length, "posts for", pageUrl);
 
-    return {
-      ...stats,
-      popularPosts: mapFeedPostsToPopularPosts(feedPosts, livePageId(searchQuery)),
-      ...estimates,
-    };
-  } catch {
-    return stats;
+    if (feedPosts.length > 0) {
+      const estimates = calculateEstimatedViewsFromFeedPosts(feedPosts);
+      const popularPosts = mapFeedPostsToPopularPosts(feedPosts, pageId);
+
+      console.log("[Apify] popular_posts from posts scraper:", {
+        count: popularPosts.length,
+        sample: popularPosts.slice(0, 2).map((p) => ({
+          title: p.title.slice(0, 60),
+          thumbnailUrl: p.thumbnailUrl,
+          postUrl: p.postUrl,
+        })),
+      });
+
+      return {
+        ...stats,
+        popularPosts,
+        ...estimates,
+      };
+    }
+  } catch (err) {
+    console.warn(
+      "[attachPopularPosts] facebook-posts-scraper failed:",
+      err instanceof Error ? err.message : err
+    );
   }
+
+  if (pageRecord) {
+    const fromPage = popularPostsFromApifyPageRecord(pageRecord, searchQuery);
+    if (fromPage?.length) {
+      console.log("[Apify] popular_posts fallback from page record:", {
+        count: fromPage.length,
+        sample: fromPage.slice(0, 2).map((p) => ({
+          title: p.title.slice(0, 60),
+          postUrl: p.postUrl,
+        })),
+      });
+      return { ...stats, popularPosts: fromPage };
+    }
+  }
+
+  return stats;
 }
 
 async function scrapeWithApify(
@@ -372,10 +593,47 @@ async function scrapeWithApify(
   const items = await fetchDatasetItems(datasetId, apiKey);
   if (items.length === 0) return null;
 
-  const stats = buildStatsFromApifyRecord(items[0], pageUrl);
+  const record = items[0];
+  const pageLabel =
+    record.title?.trim() || record.pageName?.trim() || pageUrl;
+
+  logApifyProfileAndPostsFields(record, pageLabel);
+
+  const stats = buildStatsFromApifyRecord(record, pageUrl);
   if (!stats) return null;
 
-  return attachPopularPosts(stats, pageUrl, searchQuery, apiKey);
+  const enriched = await attachPopularPosts(
+    stats,
+    pageUrl,
+    searchQuery,
+    apiKey,
+    record
+  );
+  const category = extractCategoryFromApifyRecord(
+    record,
+    enriched.pageName
+  );
+
+  console.log("[scrapeWithApify] saving to pages_database:", {
+    pageName: enriched.pageName,
+    profilePictureUrl: enriched.profilePictureUrl ?? null,
+    popularPostsCount: enriched.popularPosts?.length ?? 0,
+    category,
+  });
+
+  const persisted = await persistScrapedPageToDatabase(
+    searchQuery,
+    enriched,
+    category
+  );
+  if (!persisted.ok && persisted.error) {
+    console.warn(
+      "[scrapeFacebookPageLight] pages_database upsert:",
+      persisted.error
+    );
+  }
+
+  return enriched;
 }
 
 /**
@@ -406,9 +664,19 @@ export async function scrapeFacebookPageLight(
     }
   }
 
-  return buildPageStats(
+  const fallback = buildPageStats(
     fallbackName,
     `Sample analytics for ${fallbackName}. Live Facebook data is estimated while scraping is unavailable.`,
     estimateFollowersFromName(fallbackName)
   );
+
+  const persisted = await persistScrapedPageToDatabase(query, fallback);
+  if (!persisted.ok && persisted.error) {
+    console.warn(
+      "[scrapeFacebookPageLight] pages_database upsert (fallback):",
+      persisted.error
+    );
+  }
+
+  return fallback;
 }

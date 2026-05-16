@@ -61,6 +61,8 @@ export type TrendingPage = {
   /** Present on live pages from Apify */
   monetization?: MonetizationIntel;
   topPostMultiplier?: string;
+  /** True when search API returned pages_database cache (< 24h) */
+  fromCache?: boolean;
 };
 
 function avatar(name: string) {

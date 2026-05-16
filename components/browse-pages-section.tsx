@@ -17,8 +17,8 @@ import { MonetizationCompact } from "@/components/monetization-intelligence";
 import { OutlierScoreLabel } from "@/components/outlier-score-label";
 import {
   CuratedBadge,
+  DataSourceBadge,
   HiddenGemBadge,
-  LiveDataBadge,
   PostOutlierBadge,
 } from "@/components/score-badges";
 import { pageResultToTrendingPage } from "@/lib/discover-live";
@@ -138,7 +138,10 @@ function TrendingPageCard({ page }: { page: TrendingPage }) {
         <HiddenGemBadge className="absolute left-2 top-2 z-10" />
       ) : null}
       {isLive ? (
-        <LiveDataBadge className="absolute right-2 top-2 z-10" />
+        <DataSourceBadge
+          fromCache={page.fromCache}
+          className="absolute right-2 top-2 z-10"
+        />
       ) : page.trendingRank && page.trendingRank <= 3 ? (
         <span className="absolute right-2 top-2 z-10 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
           #{page.trendingRank} Trending

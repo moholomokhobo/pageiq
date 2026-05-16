@@ -2,9 +2,16 @@
 
 import type { PageResult } from "@/app/dashboard/page-search-bar";
 import { AppTopActions } from "@/components/app-top-actions";
-import { FacebookSearchTip } from "@/components/facebook-search-tip";
+import { EarningPotentialBadge } from "@/components/earning-potential-badge";
+import { PagesFilterModal } from "@/components/pages-filter-modal";
 import { FACEBOOK_PAGE_SEARCH_PLACEHOLDER } from "@/lib/facebook-search-copy";
-import { LiveDataBadge } from "@/components/score-badges";
+import {
+  applyAdvancedFilters,
+  countActiveAdvancedFilters,
+  DEFAULT_PAGE_ADVANCED_FILTERS,
+  type PageAdvancedFilters,
+} from "@/lib/pages-advanced-filters";
+import { DataSourceBadge } from "@/components/score-badges";
 import { pageResultToTrendingPage } from "@/lib/discover-live";
 import {
   enrichTrendingPage,
@@ -17,6 +24,7 @@ import {
   type PageSortKey,
   type PopularPost,
 } from "@/lib/pages-list-data";
+import { normalizePageUrl } from "@/lib/page-url";
 import { outlierTrafficLevel, trafficBarClass } from "@/lib/traffic-light";
 import Link from "next/link";
 import { FormEvent, useCallback, useMemo, useState } from "react";
@@ -223,18 +231,36 @@ function PostEngagementStats({ post }: { post: PopularPost }) {
   );
 }
 
-function PostCard({ post }: { post: PopularPost }) {
+function formatFollowersLine(page: PageListItem): string {
+  const base = `${page.followerCount} followers`;
+  if (page.country) return `${base} · ${page.country}`;
+  return base;
+}
+
+function PostCard({
+  post,
+  fallbackPageUrl,
+}: {
+  post: PopularPost;
+  fallbackPageUrl: string;
+}) {
   const [thumbFailed, setThumbFailed] = useState(false);
   const showThumbnail = Boolean(post.thumbnailUrl) && !thumbFailed;
+  const href = post.postUrl?.startsWith("http") ? post.postUrl : fallbackPageUrl;
 
   return (
-    <article className="flex min-w-0 flex-col">
-      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900">
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex min-w-0 flex-col rounded-lg outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-blue-500/40"
+    >
+      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition group-hover:border-blue-300 group-hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:group-hover:border-blue-500/50">
         {showThumbnail ? (
           <img
             src={post.thumbnailUrl!}
             alt=""
-            className="aspect-[16/10] w-full object-cover"
+            className="aspect-[16/10] w-full object-cover transition group-hover:brightness-95 dark:group-hover:brightness-110"
             onError={() => setThumbFailed(true)}
           />
         ) : (
@@ -254,11 +280,13 @@ function PostCard({ post }: { post: PopularPost }) {
         </span>
       </div>
       <PostEngagementStats post={post} />
-      <p className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug text-slate-800 dark:text-zinc-200">
+      <p className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug text-slate-800 transition group-hover:text-blue-700 dark:text-zinc-200 dark:group-hover:text-blue-300">
         {post.title}
       </p>
-      <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-400">{post.timeAgo}</p>
-    </article>
+      <p className="mt-0.5 text-[11px] text-slate-500 transition group-hover:text-slate-600 dark:text-zinc-400 dark:group-hover:text-zinc-300">
+        {post.timeAgo}
+      </p>
+    </a>
   );
 }
 
@@ -279,6 +307,7 @@ function PageCard({
   const outlierLevel = outlierTrafficLevel(page.outlierScore);
   const barPercent = `${Math.min(100, Math.max(12, page.outlierScore))}%`;
   const analyzeHref = `/dashboard?q=${encodeURIComponent(page.searchQuery)}`;
+  const pageFacebookUrl = normalizePageUrl(page.searchQuery);
 
   const handleShare = async () => {
     const url = `${window.location.origin}/dashboard?q=${encodeURIComponent(page.searchQuery)}`;
@@ -313,19 +342,22 @@ function PageCard({
             >
               {page.pageName}
             </Link>
+            <EarningPotentialBadge page={page} />
             {page.monetized ? (
               <span
                 className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
                 title="Monetized"
               />
             ) : null}
-            {page.source === "live" ? <LiveDataBadge /> : null}
+            {page.source === "live" ? (
+              <DataSourceBadge fromCache={page.fromCache} />
+            ) : null}
             <span className="rounded-md border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:border-zinc-700 dark:text-zinc-400">
               {page.niche}
             </span>
           </div>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-            {page.followerCount} followers
+            {formatFollowersLine(page)}
           </p>
         </div>
 
@@ -459,7 +491,11 @@ function PageCard({
             </Link>
             <div className="grid grid-cols-4 gap-3">
               {page.popularPosts.slice(0, 4).map((post) => (
-                <PostCard key={post.id} post={post} />
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  fallbackPageUrl={pageFacebookUrl}
+                />
               ))}
             </div>
           </div>
@@ -479,19 +515,48 @@ export function PagesClient() {
   const [liveItems, setLiveItems] = useState<PageListItem[]>([]);
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<PageAdvancedFilters>(
+    DEFAULT_PAGE_ADVANCED_FILTERS
+  );
+  const [appliedFilters, setAppliedFilters] = useState<PageAdvancedFilters>(
+    DEFAULT_PAGE_ADVANCED_FILTERS
+  );
+
+  const activeFilterCount = useMemo(
+    () => countActiveAdvancedFilters(appliedFilters),
+    [appliedFilters]
+  );
 
   const allItems = useMemo(
     () => [...liveItems, ...pageListItems.filter((p) => !liveItems.some((l) => l.id === p.id))],
     [liveItems]
   );
 
+  const liveOrder = useMemo(
+    () => new Map(liveItems.map((page, index) => [page.id, index])),
+    [liveItems]
+  );
+
   const visiblePages = useMemo(() => {
-    const filtered = filterPagesByTab(allItems, activeTab);
-    const sorted = sortPageList(filtered, sortKey, sortDirection);
-    const live = sorted.filter((page) => page.source === "live");
-    const curated = sorted.filter((page) => page.source !== "live");
-    return [...live, ...curated].slice(0, DISPLAY_COUNT);
-  }, [allItems, activeTab, sortKey, sortDirection]);
+    const filtered = applyAdvancedFilters(
+      filterPagesByTab(allItems, activeTab),
+      appliedFilters
+    );
+
+    const live = filtered.filter((page) => page.source === "live");
+    const curated = sortPageList(
+      filtered.filter((page) => page.source !== "live"),
+      sortKey,
+      sortDirection
+    );
+
+    const sortedLive = [...live].sort(
+      (a, b) => (liveOrder.get(a.id) ?? 0) - (liveOrder.get(b.id) ?? 0)
+    );
+
+    return [...sortedLive, ...curated].slice(0, DISPLAY_COUNT);
+  }, [allItems, activeTab, appliedFilters, sortKey, sortDirection, liveOrder]);
 
   const handleSort = useCallback((key: PageSortKey) => {
     if (sortKey === key) {
@@ -558,6 +623,7 @@ export function PagesClient() {
         const item = enrichTrendingPage(
           { ...trending, source: "live" },
           {
+            fromCache: data.fromCache,
             ...(data.popularPosts?.length
               ? { popularPosts: data.popularPosts }
               : {}),
@@ -641,27 +707,27 @@ export function PagesClient() {
               placeholder={FACEBOOK_PAGE_SEARCH_PLACEHOLDER}
               disabled={addLoading}
               aria-busy={addLoading}
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-28 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-wait disabled:opacity-70 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-24 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-wait disabled:opacity-70 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:focus:border-blue-500"
             />
             <button
-              type="submit"
-              disabled={addLoading || !addQuery.trim()}
-              className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              type="button"
+              onClick={() => {
+                setDraftFilters(appliedFilters);
+                setFiltersOpen(true);
+              }}
+              className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
             >
-              {addLoading ? (
-                <>
-                  <span
-                    className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white"
-                    aria-hidden
-                  />
-                  Fetching…
-                </>
-              ) : (
-                "Add"
-              )}
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              Filters
+              {activeFilterCount > 0 ? (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              ) : null}
             </button>
           </div>
-          <FacebookSearchTip />
           {addLoading ? (
             <p className="text-xs text-slate-500 dark:text-zinc-400">
               Fetching live page data from Facebook via Apify…
@@ -733,6 +799,18 @@ export function PagesClient() {
           )}
         </div>
       </div>
+
+      <PagesFilterModal
+        open={filtersOpen}
+        draft={draftFilters}
+        onChange={setDraftFilters}
+        onClose={() => setFiltersOpen(false)}
+        onReset={() => setDraftFilters(DEFAULT_PAGE_ADVANCED_FILTERS)}
+        onApply={() => {
+          setAppliedFilters(draftFilters);
+          setFiltersOpen(false);
+        }}
+      />
     </div>
   );
 }

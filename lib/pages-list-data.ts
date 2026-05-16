@@ -40,6 +40,7 @@ export type PopularPost = {
   shares: number;
   /** Weighted score: shares×3 + likes×1 + comments×2 */
   engagementScore: number;
+  postUrl?: string;
 };
 
 /** Shares×3 + likes×1 + comments×2 */
@@ -83,6 +84,9 @@ export type PageListItem = {
   monetized: boolean;
   popularPosts: PopularPost[];
   source?: TrendingPage["source"];
+  /** Set only when country is known from a live scrape */
+  country?: string;
+  fromCache?: boolean;
 };
 
 function hashSeed(id: string) {
@@ -119,6 +123,7 @@ function toPopularPost(
     timeAgo: string;
     overlayLabel: string;
     thumbnailUrl?: string | null;
+    postUrl?: string;
   }
 ): PopularPost {
   const engagementScore = calculatePostEngagementScore(
@@ -141,6 +146,7 @@ function toPopularPost(
     timeAgo: input.timeAgo,
     thumbnailHue: (seed * 37 + index * 53) % 360,
     overlayLabel: input.overlayLabel,
+    postUrl: input.postUrl,
   };
 }
 
@@ -162,6 +168,7 @@ export function mapFeedPostsToPopularPosts(
       timeAgo: formatTimeAgo(post.postedAtDate),
       overlayLabel: post.postedAt,
       thumbnailUrl: post.thumbnailUrl ?? null,
+      postUrl: post.postUrl,
     });
   });
 
@@ -218,6 +225,7 @@ export function enrichTrendingPage(
   options?: {
     popularPosts?: PopularPost[];
     estimatedAvgViews?: EstimatedAvgViewsInput;
+    fromCache?: boolean;
   }
 ): PageListItem {
   const seed = hashSeed(page.id);
@@ -263,6 +271,13 @@ export function enrichTrendingPage(
   const numberOfPosts = 48 + (seed % 820);
   const outlierMultiplier = `${(3.5 + (outlierScore / 100) * 4.5 + (seed % 12) / 10).toFixed(2)}x`;
 
+  const scrapedCountry =
+    page.source === "live" &&
+    page.country?.trim() &&
+    page.country !== "Not listed"
+      ? page.country.trim()
+      : undefined;
+
   return {
     id: page.id,
     pageName: page.pageName,
@@ -294,6 +309,8 @@ export function enrichTrendingPage(
       options?.popularPosts ?? buildPopularPosts(page, seed)
     ),
     source: page.source,
+    country: scrapedCountry,
+    fromCache: options?.fromCache ?? page.fromCache,
   };
 }
 

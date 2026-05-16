@@ -2,7 +2,7 @@
 
 import type { PageResult } from "@/app/dashboard/page-search-bar";
 import { OutlierScoreLabel } from "@/components/outlier-score-label";
-import { PostOutlierBadge } from "@/components/score-badges";
+import { DataSourceBadge, PostOutlierBadge } from "@/components/score-badges";
 import { AppTopActions } from "@/components/app-top-actions";
 import {
   pageHealthFromOutlierScore,
@@ -172,9 +172,12 @@ function PageColumn({
             {pageInitials(result.pageName)}
           </span>
           <div className="min-w-0">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              {result.pageName}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                {result.pageName}
+              </h2>
+              <DataSourceBadge fromCache={result.fromCache} />
+            </div>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               Facebook Page
             </p>

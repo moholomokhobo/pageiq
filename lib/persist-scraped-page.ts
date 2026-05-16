@@ -4,10 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logSupabaseError, pagesDatabaseTable } from "@/lib/supabase/tables";
 
-export function isLiveApifyScrapeResult(stats: FacebookPageStats): boolean {
-  return !stats.samplePostsAnalysis && Boolean(stats.pageName?.trim());
-}
-
 async function getWriteClient() {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
     return createAdminClient();
@@ -20,16 +16,28 @@ async function getWriteClient() {
  */
 export async function persistScrapedPageToDatabase(
   searchQuery: string,
-  stats: FacebookPageStats
+  stats: FacebookPageStats,
+  category?: string
 ): Promise<{ ok: boolean; error?: string }> {
-  if (!isLiveApifyScrapeResult(stats)) {
-    return { ok: false, error: "Not a live scrape result" };
+  if (!stats.pageName?.trim()) {
+    return { ok: false, error: "Missing page name" };
   }
 
   try {
     const supabase = await getWriteClient();
-    const row = mapScrapeToPageInsert(searchQuery, stats);
+    const row = mapScrapeToPageInsert(searchQuery, stats, category);
     const now = new Date().toISOString();
+
+    console.log("[persistScrapedPageToDatabase] upsert payload:", {
+      page_url: row.page_url,
+      page_name: row.page_name,
+      profile_picture_url: row.profile_picture_url,
+      popular_posts_count: Array.isArray(row.popular_posts)
+        ? row.popular_posts.length
+        : 0,
+      profilePictureUrl_from_stats: stats.profilePictureUrl ?? null,
+      popularPosts_from_stats: stats.popularPosts?.length ?? 0,
+    });
 
     const { error } = await pagesDatabaseTable(supabase).upsert(
       {

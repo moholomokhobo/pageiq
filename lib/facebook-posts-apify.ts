@@ -14,6 +14,7 @@ export type ScrapedFacebookFeedPost = {
   postedAtDate: Date;
   thumbnailUrl?: string;
   postType: FeedPostType;
+  postUrl?: string;
 };
 
 type ApifyRunResponse = {
@@ -211,6 +212,9 @@ function mapPostRecord(record: ApifyFacebookPostRecord): ScrapedFacebookFeedPost
   const comments = Number(record.comments ?? record.commentsCount ?? 0) || 0;
   const shares = Number(record.shares ?? record.sharesCount ?? 0) || 0;
   const postedAtDate = parsePostDate(record.timestamp ?? record.time ?? record.date);
+  const postUrl = [record.topLevelUrl, record.url]
+    .map((value) => value?.trim())
+    .find((value) => value?.startsWith("http"));
 
   return {
     text,
@@ -225,6 +229,7 @@ function mapPostRecord(record: ApifyFacebookPostRecord): ScrapedFacebookFeedPost
     postedAtDate,
     thumbnailUrl: extractThumbnail(record),
     postType: classifyFeedPostType(record),
+    postUrl,
   };
 }
 

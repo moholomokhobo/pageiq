@@ -35,6 +35,7 @@ export type PageResult = {
   estimatedAvgViewsPerReel?: number;
   estimatedAvgViewsPerImage?: number;
   estimatedAvgViewsPerText?: number;
+  fromCache?: boolean;
 };
 
 type PageSearchBarProps = {
