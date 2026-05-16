@@ -1,6 +1,9 @@
 import {
-  buildFacebookPhotosTabUrl,
-  buildFacebookReelsTabUrls,
+  buildFacebookPhotosTabUrlCandidates,
+  buildFacebookReelsTabUrlCandidates,
+  buildFacebookTextPostsTabUrl,
+  isPersonalFacebookProfile,
+  type FacebookTabUrlCandidate,
 } from "@/lib/facebook-page-url";
 
 const POSTS_ACTOR = "apify~facebook-posts-scraper";
@@ -9,6 +12,7 @@ const POLL_INTERVAL_MS = 3_000;
 const MAX_WAIT_MS = 90_000;
 export const REELS_FETCH_LIMIT = 20;
 export const PHOTOS_FETCH_LIMIT = 20;
+export const TEXT_POSTS_FETCH_LIMIT = 20;
 
 export type FeedPostType = "reel" | "image" | "text";
 
@@ -352,48 +356,76 @@ function normalizeScrapedReelPosts(
     );
 }
 
+async function scrapeTabWithCandidates(
+  tabName: string,
+  pageUrl: string,
+  apiKey: string,
+  resultsLimit: number,
+  candidates: FacebookTabUrlCandidate[],
+  normalize: (posts: ScrapedFacebookFeedPost[]) => ScrapedFacebookFeedPost[],
+  scrapeOptions?: { allowEmptyCaption?: boolean }
+): Promise<ScrapedFacebookFeedPost[]> {
+  const profileType = isPersonalFacebookProfile(pageUrl)
+    ? "personal profile"
+    : "page";
+
+  console.log(`[Apify ${tabName}] Base page URL:`, pageUrl);
+  console.log(`[Apify ${tabName}] Account type:`, profileType);
+  console.log(
+    `[Apify ${tabName}] Candidate URLs:`,
+    candidates.map((c) => `${c.label} → ${c.url}`)
+  );
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const { url, label } = candidates[index]!;
+    const isFallback = index > 0;
+
+    console.log(
+      `[Apify ${tabName}] Trying URL format ${label} (${isFallback ? "fallback" : "primary"}):`,
+      url
+    );
+
+    const posts = await scrapePostsFromUrl(url, apiKey, resultsLimit, scrapeOptions);
+    const normalized = normalize(posts);
+
+    if (normalized.length > 0) {
+      console.log(
+        `[Apify ${tabName}] Scrape succeeded with URL format ${label}:`,
+        url,
+        `(${normalized.length} posts)`
+      );
+      return normalized;
+    }
+
+    console.log(
+      `[Apify ${tabName}] No results from URL format ${label}:`,
+      url,
+      index < candidates.length - 1 ? "— trying next format" : ""
+    );
+  }
+
+  console.log(
+    `[Apify ${tabName}] All URL formats returned 0 results — caller will use estimated values (Est.)`
+  );
+  return [];
+}
+
 /**
- * Scrapes the page Reels tab — returns reel posts with view counts when available.
- * Tries /reels first, then ?sk=videos_reels for profile-style pages.
+ * Scrapes the Reels tab (profile-aware URL order).
  */
 export async function scrapeFacebookPageReels(
   pageUrl: string,
   apiKey: string,
   resultsLimit = REELS_FETCH_LIMIT
 ): Promise<ScrapedFacebookFeedPost[]> {
-  const candidateUrls = buildFacebookReelsTabUrls(pageUrl);
-
-  console.log("[Apify Reels] Base page URL:", pageUrl);
-  console.log("[Apify Reels] Candidate Reels tab URLs:", candidateUrls);
-
-  for (let index = 0; index < candidateUrls.length; index += 1) {
-    const reelsTabUrl = candidateUrls[index];
-    const isFallback = index > 0;
-
-    console.log(
-      `[Apify Reels] Passing URL to facebook-posts-scraper (${isFallback ? "fallback" : "primary"}):`,
-      reelsTabUrl
-    );
-
-    const posts = await scrapePostsFromUrl(reelsTabUrl, apiKey, resultsLimit);
-    const reels = normalizeScrapedReelPosts(posts);
-
-    if (reels.length > 0) {
-      console.log(
-        "[Apify Reels] Scrape succeeded with URL:",
-        reelsTabUrl,
-        `(${reels.length} reels)`
-      );
-      return reels;
-    }
-
-    console.log(
-      "[Apify Reels] No reels returned from URL,",
-      isFallback ? "giving up" : "trying fallback format"
-    );
-  }
-
-  return [];
+  return scrapeTabWithCandidates(
+    "Reels",
+    pageUrl,
+    apiKey,
+    resultsLimit,
+    buildFacebookReelsTabUrlCandidates(pageUrl),
+    normalizeScrapedReelPosts
+  );
 }
 
 function normalizeScrapedPhotoPosts(
@@ -413,36 +445,78 @@ function normalizeScrapedPhotoPosts(
     );
 }
 
+function normalizeScrapedTextPosts(
+  posts: ScrapedFacebookFeedPost[]
+): ScrapedFacebookFeedPost[] {
+  return posts
+    .filter(
+      (post) =>
+        post.postType !== "reel" &&
+        !(post.viewCount ?? 0) &&
+        !post.postUrl?.includes("/reel/")
+    )
+    .map((post) => ({
+      ...post,
+      postType: "text" as const,
+    }))
+    .filter(
+      (post) =>
+        post.text.trim().length > 0 ||
+        post.likes + post.comments + post.shares > 0
+    );
+}
+
 /**
- * Scrapes the page Photos tab at /{page}/photos_by/.
+ * Scrapes the Photos tab (profile-aware URL order).
  */
 export async function scrapeFacebookPagePhotos(
   pageUrl: string,
   apiKey: string,
   resultsLimit = PHOTOS_FETCH_LIMIT
 ): Promise<ScrapedFacebookFeedPost[]> {
-  const photosTabUrl = buildFacebookPhotosTabUrl(pageUrl);
+  return scrapeTabWithCandidates(
+    "Photos",
+    pageUrl,
+    apiKey,
+    resultsLimit,
+    buildFacebookPhotosTabUrlCandidates(pageUrl),
+    normalizeScrapedPhotoPosts,
+    { allowEmptyCaption: true }
+  );
+}
 
-  console.log("[Apify Photos] Base page URL:", pageUrl);
+/**
+ * Scrapes the Posts tab at /{page}/posts/ for text post engagement.
+ */
+export async function scrapeFacebookPageTextPosts(
+  pageUrl: string,
+  apiKey: string,
+  resultsLimit = TEXT_POSTS_FETCH_LIMIT
+): Promise<ScrapedFacebookFeedPost[]> {
+  const textPostsTabUrl = buildFacebookTextPostsTabUrl(pageUrl);
+
+  console.log("[Apify Text] Base page URL:", pageUrl);
+  console.log("[Apify Text] Text posts tab URL format: /posts/");
   console.log(
-    "[Apify Photos] Passing URL to facebook-posts-scraper:",
-    photosTabUrl
+    "[Apify Text] Passing URL to facebook-posts-scraper:",
+    textPostsTabUrl
   );
 
-  const posts = await scrapePostsFromUrl(photosTabUrl, apiKey, resultsLimit, {
-    allowEmptyCaption: true,
-  });
-  const photos = normalizeScrapedPhotoPosts(posts);
+  const posts = await scrapePostsFromUrl(textPostsTabUrl, apiKey, resultsLimit);
+  const textPosts = normalizeScrapedTextPosts(posts);
 
-  if (photos.length > 0) {
+  if (textPosts.length > 0) {
     console.log(
-      "[Apify Photos] Scrape succeeded with URL:",
-      photosTabUrl,
-      `(${photos.length} photos)`
+      "[Apify Text] Scrape succeeded with URL format /posts/:",
+      textPostsTabUrl,
+      `(${textPosts.length} text posts)`
     );
   } else {
-    console.log("[Apify Photos] No photos returned from URL:", photosTabUrl);
+    console.log(
+      "[Apify Text] No text posts returned from URL format /posts/:",
+      textPostsTabUrl
+    );
   }
 
-  return photos;
+  return textPosts;
 }

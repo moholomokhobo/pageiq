@@ -1,7 +1,9 @@
 import { calculateEstimatedViewsFromFeedPosts } from "@/lib/estimated-views-from-posts";
 import {
-  buildFacebookPhotosTabUrl,
-  buildFacebookReelsTabUrls,
+  buildFacebookPhotosTabUrlCandidates,
+  buildFacebookReelsTabUrlCandidates,
+  buildFacebookTextPostsTabUrl,
+  isPersonalFacebookProfile,
   resolveFacebookPageUrls,
 } from "@/lib/facebook-page-url";
 import {
@@ -10,6 +12,7 @@ import {
   scrapeFacebookPagePhotos,
   scrapeFacebookPagePosts,
   scrapeFacebookPageReels,
+  scrapeFacebookPageTextPosts,
   type ScrapedFacebookFeedPost,
 } from "@/lib/facebook-posts-apify";
 import { analyzePhotos, logApifyPhotoSample } from "@/lib/photo-analytics";
@@ -556,9 +559,14 @@ function applyTextAnalyticsToStats(
 
 function enrichStatsFromFeedPosts(
   stats: FacebookPageStats,
-  feedPosts: ScrapedFacebookFeedPost[]
+  feedPosts: ScrapedFacebookFeedPost[],
+  options?: { textPosts?: ScrapedFacebookFeedPost[] }
 ): FacebookPageStats {
-  const textAnalytics = analyzeTextPosts(feedPosts);
+  const textSource =
+    options?.textPosts && options.textPosts.length > 0
+      ? options.textPosts
+      : feedPosts;
+  const textAnalytics = analyzeTextPosts(textSource);
   let next = stats;
 
   if (textAnalytics) {
@@ -566,6 +574,10 @@ function enrichStatsFromFeedPosts(
       avgEngagementPerTextPost: textAnalytics.avgEngagementPerTextPost,
       avgPeriodLabel: textAnalytics.avgPeriodLabel,
       textPostCount: textAnalytics.posts.length,
+      source:
+        options?.textPosts && options.textPosts.length > 0
+          ? "/posts/ tab"
+          : "main feed",
     });
     next = applyTextAnalyticsToStats(next, textAnalytics);
   }
@@ -653,21 +665,24 @@ async function attachPopularPosts(
   pageRecord?: ApifyPageRecord
 ): Promise<FacebookPageStats> {
   const pageId = livePageId(searchQuery);
+  const personalProfile = isPersonalFacebookProfile(pageUrl);
+
+  console.log(
+    "[scrapeFacebookPageLight]",
+    personalProfile ? "Personal profile detected" : "Facebook page detected",
+    "— slug:",
+    pageUrl
+  );
 
   let reelPosts: ScrapedFacebookFeedPost[] = [];
   let photoPosts: ScrapedFacebookFeedPost[] = [];
+  let textPosts: ScrapedFacebookFeedPost[] = [];
 
   try {
-    const reelsTabUrls = buildFacebookReelsTabUrls(pageUrl);
     console.log(
-      "[scrapeFacebookPageLight] Reels tab URL(s) to scrape:",
-      reelsTabUrls
+      "[scrapeFacebookPageLight] Reels tab candidates:",
+      buildFacebookReelsTabUrlCandidates(pageUrl).map((c) => c.label)
     );
-    console.log(
-      "[scrapeFacebookPageLight] Primary Reels tab URL:",
-      reelsTabUrls[0]
-    );
-
     reelPosts = await scrapeFacebookPageReels(
       pageUrl,
       apiKey,
@@ -682,12 +697,10 @@ async function attachPopularPosts(
   }
 
   try {
-    const photosTabUrl = buildFacebookPhotosTabUrl(pageUrl);
     console.log(
-      "[scrapeFacebookPageLight] Photos tab URL to scrape:",
-      photosTabUrl
+      "[scrapeFacebookPageLight] Photos tab candidates:",
+      buildFacebookPhotosTabUrlCandidates(pageUrl).map((c) => c.label)
     );
-
     photoPosts = await scrapeFacebookPagePhotos(
       pageUrl,
       apiKey,
@@ -701,16 +714,30 @@ async function attachPopularPosts(
     );
   }
 
+  try {
+    const textPostsTabUrl = buildFacebookTextPostsTabUrl(pageUrl);
+    console.log(
+      "[scrapeFacebookPageLight] Text posts tab URL (/posts/):",
+      textPostsTabUrl
+    );
+    textPosts = await scrapeFacebookPageTextPosts(
+      pageUrl,
+      apiKey,
+      POSTS_FETCH_LIMIT
+    );
+  } catch (err) {
+    console.warn(
+      "[attachPopularPosts] Text posts tab scrape failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
+
   const reelAnalytics = analyzeReels(reelPosts, pageId);
   const photoAnalytics = analyzePhotos(photoPosts);
+  const textAnalytics =
+    textPosts.length > 0 ? analyzeTextPosts(textPosts) : null;
 
-  if (photoAnalytics) {
-    console.log("[Apify] Photo analytics:", {
-      avgEngagementPerImage: photoAnalytics.avgEngagementPerImage,
-      avgPeriodLabel: photoAnalytics.avgPeriodLabel,
-      photoCount: photoAnalytics.photos.length,
-    });
-  }
+  let next = stats;
 
   if (reelAnalytics) {
     console.log("[Apify] Reel analytics:", {
@@ -720,104 +747,82 @@ async function attachPopularPosts(
       outlierReelCount: reelAnalytics.outlierReels.length,
       popularPostsCount: reelAnalytics.popularPosts.length,
     });
-
-    let next = applyReelAnalyticsToStats(stats, reelAnalytics);
-    if (photoAnalytics) {
-      next = applyPhotoAnalyticsToStats(next, photoAnalytics);
-    }
-
-    try {
-      const feedPosts = await scrapeFacebookPagePosts(
-        pageUrl,
-        apiKey,
-        POSTS_FETCH_LIMIT
-      );
-      next = enrichStatsFromFeedPosts(
-        next,
-        feedPosts.filter((post) => post.postType !== "reel")
-      );
-    } catch {
-      // reel metrics already applied
-    }
-
-    return next;
+    next = applyReelAnalyticsToStats(next, reelAnalytics);
+  } else {
+    console.log(
+      "[attachPopularPosts] Reels: 0 results — using estimated avg views (Est.)"
+    );
   }
 
   if (photoAnalytics) {
-    let next = applyPhotoAnalyticsToStats(stats, photoAnalytics);
+    console.log("[Apify] Photo analytics:", {
+      avgEngagementPerImage: photoAnalytics.avgEngagementPerImage,
+      avgPeriodLabel: photoAnalytics.avgPeriodLabel,
+      photoCount: photoAnalytics.photos.length,
+    });
+    next = applyPhotoAnalyticsToStats(next, photoAnalytics);
+  } else {
+    console.log(
+      "[attachPopularPosts] Photos: 0 results — using estimated engagement (Est.)"
+    );
+  }
 
+  if (textAnalytics) {
+    console.log("[Apify] Text post analytics:", {
+      avgEngagementPerTextPost: textAnalytics.avgEngagementPerTextPost,
+      avgPeriodLabel: textAnalytics.avgPeriodLabel,
+      textPostCount: textAnalytics.posts.length,
+      source: "/posts/ tab",
+    });
+    next = applyTextAnalyticsToStats(next, textAnalytics);
+  } else {
+    console.log(
+      "[attachPopularPosts] Text posts: 0 results — using estimated engagement (Est.)"
+    );
+  }
+
+  const needsEstimatedFallback =
+    !next.usesRealReelViews ||
+    !next.usesRealImageViews ||
+    !next.usesRealTextEngagement;
+
+  if (needsEstimatedFallback || !next.popularPosts?.length) {
     try {
       const feedPosts = await scrapeFacebookPagePosts(
         pageUrl,
         apiKey,
         POSTS_FETCH_LIMIT
       );
-      next = enrichStatsFromFeedPosts(next, feedPosts);
-    } catch {
-      // photo metrics already applied
-    }
 
-    return next;
-  }
+      console.log(
+        "[Apify] Main feed scrape for",
+        needsEstimatedFallback ? "estimated metrics (Est.)" : "popular posts",
+        "—",
+        feedPosts.length,
+        "posts"
+      );
 
-  try {
-    const feedPosts = await scrapeFacebookPagePosts(
-      pageUrl,
-      apiKey,
-      POSTS_FETCH_LIMIT
-    );
-
-    console.log(
-      "[Apify] facebook-posts-scraper returned",
-      feedPosts.length,
-      "posts for",
-      pageUrl
-    );
-
-    const reelsFromFeed = feedPosts.filter(
-      (post) =>
-        post.postType === "reel" ||
-        (post.viewCount ?? 0) > 0 ||
-        post.postUrl?.includes("/reel/")
-    );
-    if (reelsFromFeed.length > 0) {
-      logApifyReelSample(`main feed (reels) · ${pageUrl}`, reelsFromFeed);
-      const feedReelAnalytics = analyzeReels(reelsFromFeed, pageId);
-      if (feedReelAnalytics) {
-        let next = applyReelAnalyticsToStats(stats, feedReelAnalytics);
-        return enrichStatsFromFeedPosts(
-          next,
-          feedPosts.filter((post) => post.postType !== "reel")
-        );
+      if (!next.popularPosts?.length && feedPosts.length > 0) {
+        next = {
+          ...next,
+          popularPosts: mapFeedPostsToPopularPosts(feedPosts, pageId),
+        };
       }
-    }
 
-    if (feedPosts.length > 0) {
-      const popularPosts = mapFeedPostsToPopularPosts(feedPosts, pageId);
-
-      console.log("[Apify] popular_posts from posts scraper:", {
-        count: popularPosts.length,
-        sample: popularPosts.slice(0, 2).map((p) => ({
-          title: p.title.slice(0, 60),
-          views: p.views,
-          thumbnailUrl: p.thumbnailUrl,
-          postUrl: p.postUrl,
-        })),
-      });
-
-      return enrichStatsFromFeedPosts(
-        { ...stats, popularPosts },
-        feedPosts
+      if (needsEstimatedFallback) {
+        next = enrichStatsFromFeedPosts(next, feedPosts, {
+          textPosts: next.usesRealTextEngagement ? textPosts : undefined,
+        });
+      }
+    } catch (err) {
+      console.warn(
+        "[attachPopularPosts] Main feed fallback failed:",
+        err instanceof Error ? err.message : err
       );
     }
-  } catch (err) {
-    console.warn(
-      "[attachPopularPosts] facebook-posts-scraper failed:",
-      err instanceof Error ? err.message : err
-    );
   }
 
-  if (pageRecord) {
+  if (pageRecord && !next.popularPosts?.length) {
     const fromPage = popularPostsFromApifyPageRecord(pageRecord, searchQuery);
     if (fromPage?.length) {
       console.log("[Apify] popular_posts fallback from page record:", {
@@ -827,11 +832,11 @@ async function attachPopularPosts(
           postUrl: p.postUrl,
         })),
       });
-      return { ...stats, popularPosts: fromPage };
+      next = { ...next, popularPosts: fromPage };
     }
   }
 
-  return stats;
+  return next;
 }
 
 async function scrapeWithApify(

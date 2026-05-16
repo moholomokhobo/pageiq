@@ -101,55 +101,124 @@ export function resolveFacebookPageUrls(input: string): {
   };
 }
 
-/**
- * Reels tab URL candidates for apify/facebook-posts-scraper.
- * Primary: /{page}/reels/ (trailing slash). Fallback: ?sk=videos_reels for profiles.
- */
-export function buildFacebookReelsTabUrls(pageUrl: string): string[] {
+const TAB_PATH_SUFFIXES = [
+  "reels",
+  "photos_by",
+  "photos",
+  "posts",
+  "videos",
+] as const;
+
+export type FacebookTabUrlCandidate = {
+  url: string;
+  label: string;
+};
+
+/** Canonical profile/page base without tab path segments. */
+export function buildFacebookPageBaseUrl(pageUrl: string): string {
   const desktop = normalizeFacebookUrl(pageUrl);
   const parsed = new URL(desktop);
   const segments = parsed.pathname.split("/").filter(Boolean);
-  const withoutReels =
-    segments[segments.length - 1]?.toLowerCase() === "reels"
-      ? segments.slice(0, -1)
-      : segments;
+
+  while (
+    segments.length > 0 &&
+    TAB_PATH_SUFFIXES.includes(
+      segments[segments.length - 1]!.toLowerCase() as (typeof TAB_PATH_SUFFIXES)[number]
+    )
+  ) {
+    segments.pop();
+  }
 
   const pageBase = `${parsed.protocol}//${parsed.hostname}${
-    withoutReels.length > 0 ? `/${withoutReels.join("/")}` : ""
+    segments.length > 0 ? `/${segments.join("/")}` : ""
   }`;
-  const pathReels = `${pageBase.replace(/\/+$/, "")}/reels/`;
-
-  const skUrl = new URL(desktop);
-  if (withoutReels.length > 0) {
-    skUrl.pathname = `/${withoutReels.join("/")}`;
-  }
-  skUrl.search = "";
-  skUrl.searchParams.set("sk", "videos_reels");
-  const skVideosReels = skUrl.toString();
-
-  const urls = [pathReels, skVideosReels].filter(
-    (url, index, list) => list.indexOf(url) === index
-  );
-  return urls;
+  return pageBase.replace(/\/+$/, "");
 }
 
-/** Primary Reels tab URL (/{page}/reels/). */
+/** Primary path segment (e.g. ipelengrose.makhooe.1 or Nike). */
+export function getFacebookProfileSlug(pageUrl: string): string {
+  const segments = new URL(buildFacebookPageBaseUrl(pageUrl)).pathname
+    .split("/")
+    .filter(Boolean);
+  return segments[segments.length - 1] ?? segments[0] ?? "";
+}
+
+/**
+ * Personal profiles often use dotted usernames or numeric suffixes
+ * (e.g. facebook.com/ipelengrose.makhooe.1).
+ */
+export function isPersonalFacebookProfile(pageUrl: string): boolean {
+  const slug = getFacebookProfileSlug(pageUrl);
+  if (!slug) return false;
+  return slug.includes(".") || /\d/.test(slug);
+}
+
+/**
+ * Reels tab URL candidates.
+ * Personal profiles: /reels/, ?sk=videos_reels, /videos/
+ * Pages: /reels/ only
+ */
+export function buildFacebookReelsTabUrlCandidates(
+  pageUrl: string
+): FacebookTabUrlCandidate[] {
+  const base = buildFacebookPageBaseUrl(pageUrl);
+
+  if (isPersonalFacebookProfile(pageUrl)) {
+    const skUrl = new URL(`${base}/`);
+    skUrl.search = "";
+    skUrl.searchParams.set("sk", "videos_reels");
+    return [
+      { url: `${base}/reels/`, label: "/reels/" },
+      { url: skUrl.toString(), label: "?sk=videos_reels" },
+      { url: `${base}/videos/`, label: "/videos/" },
+    ];
+  }
+
+  return [{ url: `${base}/reels/`, label: "/reels/" }];
+}
+
+export function buildFacebookReelsTabUrls(pageUrl: string): string[] {
+  return buildFacebookReelsTabUrlCandidates(pageUrl).map((c) => c.url);
+}
+
 export function buildFacebookReelsTabUrl(pageUrl: string): string {
   return buildFacebookReelsTabUrls(pageUrl)[0];
 }
 
-/** Photos tab URL (/{page}/photos_by/). */
-export function buildFacebookPhotosTabUrl(pageUrl: string): string {
-  const desktop = normalizeFacebookUrl(pageUrl);
-  const parsed = new URL(desktop);
-  const segments = parsed.pathname.split("/").filter(Boolean);
-  const withoutPhotosTab =
-    segments[segments.length - 1]?.toLowerCase() === "photos_by"
-      ? segments.slice(0, -1)
-      : segments;
+/**
+ * Photos tab URL candidates.
+ * Personal profiles: /photos/ then /photos_by/
+ * Pages: /photos_by/ then /photos/
+ */
+export function buildFacebookPhotosTabUrlCandidates(
+  pageUrl: string
+): FacebookTabUrlCandidate[] {
+  const base = buildFacebookPageBaseUrl(pageUrl);
 
-  const pageBase = `${parsed.protocol}//${parsed.hostname}${
-    withoutPhotosTab.length > 0 ? `/${withoutPhotosTab.join("/")}` : ""
-  }`;
-  return `${pageBase.replace(/\/+$/, "")}/photos_by/`;
+  if (isPersonalFacebookProfile(pageUrl)) {
+    return [
+      { url: `${base}/photos/`, label: "/photos/" },
+      { url: `${base}/photos_by/`, label: "/photos_by/" },
+    ];
+  }
+
+  return [
+    { url: `${base}/photos_by/`, label: "/photos_by/" },
+    { url: `${base}/photos/`, label: "/photos/" },
+  ];
+}
+
+export function buildFacebookPhotosTabUrls(pageUrl: string): string[] {
+  return buildFacebookPhotosTabUrlCandidates(pageUrl).map((c) => c.url);
+}
+
+export function buildFacebookPhotosTabUrl(pageUrl: string): string {
+  return buildFacebookPhotosTabUrls(pageUrl)[0];
+}
+
+/**
+ * Text posts tab: /{page}/posts/
+ */
+export function buildFacebookTextPostsTabUrl(pageUrl: string): string {
+  return `${buildFacebookPageBaseUrl(pageUrl)}/posts/`;
 }
