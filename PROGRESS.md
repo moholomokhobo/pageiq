@@ -19,15 +19,17 @@
 - All main pages loading without errors
 - Discover trending feed, Outlier score, CPM intelligence, Live Data / Curated badges, Hidden Gems
 - Dashboard, Compare, Watchlist, AI Tools, dark/light mode
-- **Database caching fully working** — `GET /api/search` serves fresh rows from `pages_database` when `last_scraped_at` is under 24h (~**332ms** cache hit vs **40–60s** Apify scrape)
+- **Database caching fully working** — `GET /api/search` serves from `pages_database` when `last_scraped_at` is under 24h (**315–862ms** cache hit vs **40–60s** Apify scrape)
 - All `pages_database` columns fixed — profile picture, popular posts, monetization, engagement rate (numeric), outlier posts, and full scrape snapshot fields save and load correctly
-- Cache hit returns **complete data** (same shape as live Apify) — profile pictures, popular posts, monetization; incomplete cache (e.g. missing profile URL) forces a fresh scrape and DB update
+- Cache hit returns **complete data** (same shape as live Apify); incomplete cache (e.g. missing profile URL) forces a fresh scrape and DB update
 - Cached / Live badges on Dashboard, Pages, Discover, and Compare
-- **Real reel view counts** scraped from Facebook Reels tab via `/{page}/reels/` URL format (with `?sk=videos_reels` fallback for profiles)
-- Apify **facebook-posts-scraper** pulls ~**19 reels per page** with real views, likes, comments, shares, thumbnails, captions, post URLs, and dates
-- **`avgViewsPerReel`** calculated from real play counts (not engagement estimates); **`usesRealReelViews`** flag marks live reel metrics in API and Pages UI
-- Per-reel engagement rate `(likes + comments + shares) / views`; outlier reels flagged at **3×+** average reel views; real view counts on Pages post thumbnails
-- **Test confirmed (Zossper):** 54,498 avg views per reel, 7.72% engagement rate
+- **Real data scraping working for all content types** (Apify **facebook-posts-scraper** + tab-specific URLs)
+- **Reels tab** — real view counts for **Facebook Pages** via `/{page}/reels/` (personal profiles: also tries `?sk=videos_reels`, `/videos/`); **confirmed with Zossper: ~54K avg views/reel**
+- **Photos tab** — real engagement (likes + comments + shares) for **pages and profiles** via `/photos/` or `/photos_by/` (profile-aware URL order)
+- **Text posts tab** — real engagement via `/{page}/posts/`
+- **Personal profiles** — real photo and text engagement; **reels stay estimated** (Facebook blocks reel scraping for most personal profiles)
+- Stat boxes show real data with **"30d avg"** subtitle when ≥3 posts in last 30 days; **no Est. label** when real data is available
+- **`usesRealReelViews`**, **`usesRealImageViews`**, **`usesRealTextEngagement`** flags on API + Pages UI
 
 ## Completed (earlier)
 
