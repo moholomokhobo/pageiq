@@ -32,7 +32,7 @@ export type PopularPost = {
   viewsRaw: number;
   timeAgo: string;
   thumbnailHue: number;
-  /** Shown on thumbnail overlay — duration or post date */
+  /** Shown on thumbnail overlay — view count or post date */
   overlayLabel: string;
   thumbnailUrl?: string | null;
   likes: number;
@@ -41,6 +41,10 @@ export type PopularPost = {
   /** Weighted score: shares×3 + likes×1 + comments×2 */
   engagementScore: number;
   postUrl?: string;
+  /** Reel got 3×+ the page's average reel views */
+  isOutlier?: boolean;
+  /** Per-reel (likes + comments + shares) / views × 100 when views known */
+  engagementRatePercent?: number;
 };
 
 /** Shares×3 + likes×1 + comments×2 */
@@ -54,7 +58,13 @@ export function calculatePostEngagementScore(
 
 export function sortPopularPostsByEngagement(posts: PopularPost[]): PopularPost[] {
   return [...posts]
-    .sort((a, b) => b.engagementScore - a.engagementScore)
+    .sort((a, b) => {
+      const aHasViews = a.viewsRaw > 1_000;
+      const bHasViews = b.viewsRaw > 1_000;
+      if (aHasViews && bHasViews) return b.viewsRaw - a.viewsRaw;
+      if (aHasViews !== bHasViews) return aHasViews ? -1 : 1;
+      return b.engagementScore - a.engagementScore;
+    })
     .slice(0, POPULAR_POST_LIMIT);
 }
 
@@ -124,6 +134,9 @@ function toPopularPost(
     overlayLabel: string;
     thumbnailUrl?: string | null;
     postUrl?: string;
+    viewsRaw?: number;
+    isOutlier?: boolean;
+    engagementRatePercent?: number;
   }
 ): PopularPost {
   const engagementScore = calculatePostEngagementScore(
@@ -131,7 +144,10 @@ function toPopularPost(
     input.comments,
     input.shares
   );
-  const viewsRaw = input.likes + input.comments + input.shares;
+  const viewsRaw =
+    input.viewsRaw != null && input.viewsRaw > 0
+      ? input.viewsRaw
+      : input.likes + input.comments + input.shares;
 
   return {
     id: `${pageId}-post-${index}`,
@@ -147,18 +163,42 @@ function toPopularPost(
     thumbnailHue: (seed * 37 + index * 53) % 360,
     overlayLabel: input.overlayLabel,
     postUrl: input.postUrl,
+    isOutlier: input.isOutlier,
+    engagementRatePercent: input.engagementRatePercent,
   };
 }
 
 export function mapFeedPostsToPopularPosts(
   posts: ScrapedFacebookFeedPost[],
-  pageId: string
+  pageId: string,
+  options?: {
+    outlierKeys?: Set<string>;
+    avgReelViews?: number;
+  }
 ): PopularPost[] {
   const seed = hashSeed(pageId);
+  const outlierKeys = options?.outlierKeys;
+  const avgReelViews = options?.avgReelViews ?? 0;
 
   const mapped = posts.map((post, index) => {
     const title =
       post.text.length > 120 ? `${post.text.slice(0, 117)}…` : post.text;
+    const viewsRaw = post.viewCount ?? 0;
+    const postKey = post.postUrl ?? post.text.slice(0, 80);
+    const isOutlier =
+      outlierKeys?.has(postKey) ??
+      (avgReelViews > 0 && viewsRaw >= avgReelViews * 3);
+    const engagementRatePercent =
+      viewsRaw > 0
+        ? Number(
+            (
+              ((post.likes + post.comments + post.shares) / viewsRaw) *
+              100
+            ).toFixed(2)
+          )
+        : undefined;
+    const overlayLabel =
+      viewsRaw > 0 ? `${formatViews(viewsRaw)} views` : post.postedAt;
 
     return toPopularPost(pageId, seed, index, {
       title,
@@ -166,9 +206,12 @@ export function mapFeedPostsToPopularPosts(
       comments: post.comments,
       shares: post.shares,
       timeAgo: formatTimeAgo(post.postedAtDate),
-      overlayLabel: post.postedAt,
+      overlayLabel,
       thumbnailUrl: post.thumbnailUrl ?? null,
       postUrl: post.postUrl,
+      viewsRaw: viewsRaw > 0 ? viewsRaw : undefined,
+      isOutlier,
+      engagementRatePercent,
     });
   });
 
@@ -218,6 +261,8 @@ export type EstimatedAvgViewsInput = {
   reel?: number;
   image?: number;
   text?: number;
+  /** When true, avg reel views come from real Apify play counts (not estimated). */
+  reelFromRealViews?: boolean;
 };
 
 export function enrichTrendingPage(
@@ -293,7 +338,9 @@ export function enrichTrendingPage(
     avgViewsPerTextPost: formatViews(resolvedTextRaw),
     avgViewsPerTextPostRaw: resolvedTextRaw,
     avgViewsPerReelEstimated:
-      reelEstimate != null && reelEstimate > 0,
+      reelEstimate != null &&
+      reelEstimate > 0 &&
+      !options?.estimatedAvgViews?.reelFromRealViews,
     avgViewsPerImageEstimated:
       imageEstimate != null && imageEstimate > 0,
     avgViewsPerTextPostEstimated:

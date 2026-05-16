@@ -1,7 +1,10 @@
+import { buildFacebookReelsTabUrls } from "@/lib/facebook-page-url";
+
 const POSTS_ACTOR = "apify~facebook-posts-scraper";
 const APIFY_API_BASE = "https://api.apify.com/v2";
 const POLL_INTERVAL_MS = 3_000;
 const MAX_WAIT_MS = 90_000;
+export const REELS_FETCH_LIMIT = 20;
 
 export type FeedPostType = "reel" | "image" | "text";
 
@@ -10,6 +13,8 @@ export type ScrapedFacebookFeedPost = {
   likes: number;
   comments: number;
   shares: number;
+  /** Play/view count when provided by Apify (reels) */
+  viewCount?: number;
   postedAt: string;
   postedAtDate: Date;
   thumbnailUrl?: string;
@@ -45,6 +50,12 @@ type ApifyFacebookPostRecord = {
   commentsCount?: number;
   shares?: number;
   sharesCount?: number;
+  viewsCount?: number;
+  viewCount?: number;
+  views?: number | string;
+  videoViewCount?: number;
+  videoViews?: number;
+  playCount?: number;
   timestamp?: number | string;
   time?: string;
   date?: string;
@@ -56,6 +67,44 @@ type ApifyFacebookPostRecord = {
   image?: string;
   media?: ApifyMediaItem[];
 };
+
+export function extractViewCountFromApifyRecord(
+  record: Record<string, unknown>
+): number {
+  const candidates = [
+    record.viewsCount,
+    record.viewCount,
+    record.views,
+    record.videoViewCount,
+    record.videoViews,
+    record.playCount,
+    record.play_count,
+    record.view_count,
+  ];
+
+  for (const value of candidates) {
+    if (value == null) continue;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.round(value);
+    }
+    if (typeof value === "string") {
+      const cleaned = value.replace(/,/g, "").trim();
+      const match = cleaned.match(/^([\d.]+)\s*([KMB])?$/i);
+      if (match) {
+        let num = parseFloat(match[1]);
+        const suffix = (match[2] ?? "").toUpperCase();
+        if (suffix === "K") num *= 1_000;
+        if (suffix === "M") num *= 1_000_000;
+        if (suffix === "B") num *= 1_000_000_000;
+        if (Number.isFinite(num) && num > 0) return Math.round(num);
+      }
+      const parsed = parseFloat(cleaned);
+      if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+    }
+  }
+
+  return 0;
+}
 
 function classifyFeedPostType(record: ApifyFacebookPostRecord): FeedPostType {
   const typeField = (record.type ?? "").toLowerCase();
@@ -216,11 +265,16 @@ function mapPostRecord(record: ApifyFacebookPostRecord): ScrapedFacebookFeedPost
     .map((value) => value?.trim())
     .find((value) => value?.startsWith("http"));
 
+  const viewCount = extractViewCountFromApifyRecord(
+    record as Record<string, unknown>
+  );
+
   return {
     text,
     likes,
     comments,
     shares,
+    viewCount: viewCount > 0 ? viewCount : undefined,
     postedAt: postedAtDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -237,10 +291,10 @@ function mapPostRecord(record: ApifyFacebookPostRecord): ScrapedFacebookFeedPost
  * Fetches the latest posts for a Facebook page via apify/facebook-posts-scraper.
  * Returns an empty array when the run fails.
  */
-export async function scrapeFacebookPagePosts(
+async function scrapePostsFromUrl(
   pageUrl: string,
   apiKey: string,
-  resultsLimit = 4
+  resultsLimit: number
 ): Promise<ScrapedFacebookFeedPost[]> {
   const runId = await startApifyRun(pageUrl, apiKey, resultsLimit);
   if (!runId) return [];
@@ -254,4 +308,78 @@ export async function scrapeFacebookPagePosts(
     .filter((post): post is ScrapedFacebookFeedPost => post !== null)
     .sort((a, b) => b.postedAtDate.getTime() - a.postedAtDate.getTime())
     .slice(0, resultsLimit);
+}
+
+/**
+ * Fetches the latest posts for a Facebook page via apify/facebook-posts-scraper.
+ */
+export async function scrapeFacebookPagePosts(
+  pageUrl: string,
+  apiKey: string,
+  resultsLimit = 4
+): Promise<ScrapedFacebookFeedPost[]> {
+  return scrapePostsFromUrl(pageUrl, apiKey, resultsLimit);
+}
+
+function normalizeScrapedReelPosts(
+  posts: ScrapedFacebookFeedPost[]
+): ScrapedFacebookFeedPost[] {
+  return posts
+    .map((post) => ({
+      ...post,
+      postType:
+        post.postType === "reel" || (post.viewCount ?? 0) > 0
+          ? ("reel" as const)
+          : post.postType,
+    }))
+    .filter(
+      (post) =>
+        post.postType === "reel" ||
+        (post.postUrl?.includes("/reel/") ?? false) ||
+        (post.viewCount ?? 0) > 0
+    );
+}
+
+/**
+ * Scrapes the page Reels tab — returns reel posts with view counts when available.
+ * Tries /reels first, then ?sk=videos_reels for profile-style pages.
+ */
+export async function scrapeFacebookPageReels(
+  pageUrl: string,
+  apiKey: string,
+  resultsLimit = REELS_FETCH_LIMIT
+): Promise<ScrapedFacebookFeedPost[]> {
+  const candidateUrls = buildFacebookReelsTabUrls(pageUrl);
+
+  console.log("[Apify Reels] Base page URL:", pageUrl);
+  console.log("[Apify Reels] Candidate Reels tab URLs:", candidateUrls);
+
+  for (let index = 0; index < candidateUrls.length; index += 1) {
+    const reelsTabUrl = candidateUrls[index];
+    const isFallback = index > 0;
+
+    console.log(
+      `[Apify Reels] Passing URL to facebook-posts-scraper (${isFallback ? "fallback" : "primary"}):`,
+      reelsTabUrl
+    );
+
+    const posts = await scrapePostsFromUrl(reelsTabUrl, apiKey, resultsLimit);
+    const reels = normalizeScrapedReelPosts(posts);
+
+    if (reels.length > 0) {
+      console.log(
+        "[Apify Reels] Scrape succeeded with URL:",
+        reelsTabUrl,
+        `(${reels.length} reels)`
+      );
+      return reels;
+    }
+
+    console.log(
+      "[Apify Reels] No reels returned from URL,",
+      isFallback ? "giving up" : "trying fallback format"
+    );
+  }
+
+  return [];
 }

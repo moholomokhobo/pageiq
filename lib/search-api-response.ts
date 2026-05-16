@@ -76,6 +76,11 @@ function normalizePopularPost(raw: unknown): PopularPost | null {
     shares,
     engagementScore: Number(post.engagementScore) || shares * 3 + likes + comments * 2,
     postUrl: post.postUrl != null ? String(post.postUrl) : undefined,
+    isOutlier: post.isOutlier === true,
+    engagementRatePercent:
+      post.engagementRatePercent != null
+        ? Number(post.engagementRatePercent)
+        : undefined,
   };
 }
 

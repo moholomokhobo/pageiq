@@ -19,6 +19,10 @@
 - All main pages loading without errors
 - Discover trending feed, Outlier score, CPM intelligence, Live Data / Curated badges, Hidden Gems
 - Dashboard, Compare, Watchlist, AI Tools, dark/light mode
+- **Database caching fully working** — `GET /api/search` serves fresh rows from `pages_database` when `last_scraped_at` is under 24h (~**332ms** cache hit vs **40–60s** Apify scrape)
+- All `pages_database` columns fixed — profile picture, popular posts, monetization, engagement rate (numeric), outlier posts, and full scrape snapshot fields save and load correctly
+- Cache hit returns **complete data** (same shape as live Apify) — profile pictures, popular posts, monetization; incomplete cache (e.g. missing profile URL) forces a fresh scrape and DB update
+- Cached / Live badges on Dashboard, Pages, Discover, and Compare
 
 ## Completed (earlier)
 
@@ -32,4 +36,4 @@
 
 1. Stripe payments
 2. Mobile responsive design
-3. Landing page update to match real features
+3. Update landing page to match real features

@@ -1,9 +1,15 @@
 import { calculateEstimatedViewsFromFeedPosts } from "@/lib/estimated-views-from-posts";
 import {
+  REELS_FETCH_LIMIT,
   scrapeFacebookPagePosts,
+  scrapeFacebookPageReels,
   type ScrapedFacebookFeedPost,
 } from "@/lib/facebook-posts-apify";
-import { resolveFacebookPageUrls } from "@/lib/facebook-page-url";
+import { analyzeReels, logApifyReelSample } from "@/lib/reel-analytics";
+import {
+  buildFacebookReelsTabUrls,
+  resolveFacebookPageUrls,
+} from "@/lib/facebook-page-url";
 import {
   extractCountryFromApifyRecord,
   pickApifyLocationFields,
@@ -25,6 +31,7 @@ import {
   type PostType,
   type ScrapedPost,
 } from "@/lib/facebook-scraper-core";
+import { parseCountValue } from "@/lib/metrics";
 import { persistScrapedPageToDatabase } from "@/lib/persist-scraped-page";
 
 const APIFY_ACTOR = "apify~facebook-pages-scraper";
@@ -518,6 +525,44 @@ function popularPostsFromApifyPageRecord(
   return mapFeedPostsToPopularPosts(feedPosts, livePageId(searchQuery));
 }
 
+function applyReelAnalyticsToStats(
+  stats: FacebookPageStats,
+  analytics: NonNullable<ReturnType<typeof analyzeReels>>
+): FacebookPageStats {
+  const engagementRateNum = Math.min(
+    15,
+    Math.max(0.1, analytics.avgEngagementRatePercent)
+  );
+  const engagementRate = `${engagementRateNum.toFixed(1)}%`;
+  const followers = parseCountValue(stats.followerCount);
+  const outlierScore = calculateOutlierScore(
+    followers,
+    engagementRateNum,
+    stats.monetization.monetizationScore,
+    stats.postsLast30Days
+  );
+
+  const mergedOutlierPosts = [
+    ...analytics.outlierPosts,
+    ...stats.outlierPosts.filter(
+      (post) =>
+        !analytics.outlierPosts.some(
+          (reel) => reel.preview === post.preview
+        )
+    ),
+  ].slice(0, 12);
+
+  return {
+    ...stats,
+    engagementRate,
+    outlierScore,
+    popularPosts: analytics.popularPosts,
+    outlierPosts: mergedOutlierPosts,
+    estimatedAvgViewsPerReel: analytics.avgViewsPerReel,
+    usesRealReelViews: true,
+  };
+}
+
 async function attachPopularPosts(
   stats: FacebookPageStats,
   pageUrl: string,
@@ -527,6 +572,73 @@ async function attachPopularPosts(
 ): Promise<FacebookPageStats> {
   const pageId = livePageId(searchQuery);
 
+  let reelPosts: ScrapedFacebookFeedPost[] = [];
+  try {
+    const reelsTabUrls = buildFacebookReelsTabUrls(pageUrl);
+    console.log(
+      "[scrapeFacebookPageLight] Reels tab URL(s) to scrape:",
+      reelsTabUrls
+    );
+    console.log(
+      "[scrapeFacebookPageLight] Primary Reels tab URL:",
+      reelsTabUrls[0]
+    );
+
+    reelPosts = await scrapeFacebookPageReels(
+      pageUrl,
+      apiKey,
+      REELS_FETCH_LIMIT
+    );
+    logApifyReelSample(`Reels tab · ${pageUrl}`, reelPosts);
+  } catch (err) {
+    console.warn(
+      "[attachPopularPosts] Reels tab scrape failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
+
+  const reelAnalytics = analyzeReels(reelPosts, pageId);
+  if (reelAnalytics) {
+    console.log("[Apify] Reel analytics:", {
+      avgViewsPerReel: reelAnalytics.avgViewsPerReel,
+      avgEngagementRatePercent: reelAnalytics.avgEngagementRatePercent,
+      outlierReelCount: reelAnalytics.outlierReels.length,
+      popularPostsCount: reelAnalytics.popularPosts.length,
+    });
+
+    let next = applyReelAnalyticsToStats(stats, reelAnalytics);
+
+    try {
+      const feedPosts = await scrapeFacebookPagePosts(
+        pageUrl,
+        apiKey,
+        POSTS_FETCH_LIMIT
+      );
+      const nonReelPosts = feedPosts.filter((post) => post.postType !== "reel");
+      const otherEstimates = calculateEstimatedViewsFromFeedPosts(nonReelPosts);
+      if (otherEstimates) {
+        next = {
+          ...next,
+          ...(otherEstimates.estimatedAvgViewsPerImage != null
+            ? {
+                estimatedAvgViewsPerImage:
+                  otherEstimates.estimatedAvgViewsPerImage,
+              }
+            : {}),
+          ...(otherEstimates.estimatedAvgViewsPerText != null
+            ? {
+                estimatedAvgViewsPerText: otherEstimates.estimatedAvgViewsPerText,
+              }
+            : {}),
+        };
+      }
+    } catch {
+      // reel metrics already applied
+    }
+
+    return next;
+  }
+
   try {
     const feedPosts = await scrapeFacebookPagePosts(
       pageUrl,
@@ -534,7 +646,30 @@ async function attachPopularPosts(
       POSTS_FETCH_LIMIT
     );
 
-    console.log("[Apify] facebook-posts-scraper returned", feedPosts.length, "posts for", pageUrl);
+    console.log(
+      "[Apify] facebook-posts-scraper returned",
+      feedPosts.length,
+      "posts for",
+      pageUrl
+    );
+
+    const reelsFromFeed = feedPosts.filter(
+      (post) =>
+        post.postType === "reel" ||
+        (post.viewCount ?? 0) > 0 ||
+        post.postUrl?.includes("/reel/")
+    );
+    if (reelsFromFeed.length > 0) {
+      logApifyReelSample(`main feed (reels) · ${pageUrl}`, reelsFromFeed);
+      const feedReelAnalytics = analyzeReels(reelsFromFeed, pageId);
+      if (feedReelAnalytics) {
+        let next = applyReelAnalyticsToStats(stats, feedReelAnalytics);
+        const estimates = calculateEstimatedViewsFromFeedPosts(
+          feedPosts.filter((post) => post.postType !== "reel")
+        );
+        return { ...next, ...estimates };
+      }
+    }
 
     if (feedPosts.length > 0) {
       const estimates = calculateEstimatedViewsFromFeedPosts(feedPosts);
@@ -544,6 +679,7 @@ async function attachPopularPosts(
         count: popularPosts.length,
         sample: popularPosts.slice(0, 2).map((p) => ({
           title: p.title.slice(0, 60),
+          views: p.views,
           thumbnailUrl: p.thumbnailUrl,
           postUrl: p.postUrl,
         })),
@@ -618,6 +754,9 @@ async function scrapeWithApify(
     pageName: enriched.pageName,
     profilePictureUrl: enriched.profilePictureUrl ?? null,
     popularPostsCount: enriched.popularPosts?.length ?? 0,
+    avgViewsPerReel: enriched.estimatedAvgViewsPerReel ?? null,
+    usesRealReelViews: enriched.usesRealReelViews ?? false,
+    engagementRate: enriched.engagementRate,
     category,
   });
 

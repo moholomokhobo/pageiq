@@ -275,9 +275,14 @@ function PostCard({
             </p>
           </div>
         )}
-        <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
-          {post.overlayLabel}
+        <span className="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+          {post.viewsRaw > 0 ? post.views : post.overlayLabel}
         </span>
+        {post.isOutlier ? (
+          <span className="absolute right-2 top-2 rounded bg-gradient-to-r from-violet-600 to-indigo-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow">
+            Outlier
+          </span>
+        ) : null}
       </div>
       <PostEngagementStats post={post} />
       <p className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug text-slate-800 transition group-hover:text-blue-700 dark:text-zinc-200 dark:group-hover:text-blue-300">
@@ -633,6 +638,7 @@ export function PagesClient() {
                     reel: data.estimatedAvgViewsPerReel,
                     image: data.estimatedAvgViewsPerImage,
                     text: data.estimatedAvgViewsPerText,
+                    reelFromRealViews: data.usesRealReelViews,
                   },
                 }
               : {}),

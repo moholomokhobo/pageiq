@@ -51,6 +51,8 @@ export type FacebookPageStats = {
   estimatedAvgViewsPerReel?: number;
   estimatedAvgViewsPerImage?: number;
   estimatedAvgViewsPerText?: number;
+  /** True when avg_views_reel is from Apify play counts on the Reels tab */
+  usesRealReelViews?: boolean;
 };
 
 export function formatCount(value: number): string {

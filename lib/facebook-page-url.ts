@@ -100,3 +100,40 @@ export function resolveFacebookPageUrls(input: string): {
     fallbackName: titleCase(trimmed),
   };
 }
+
+/**
+ * Reels tab URL candidates for apify/facebook-posts-scraper.
+ * Primary: /{page}/reels/ (trailing slash). Fallback: ?sk=videos_reels for profiles.
+ */
+export function buildFacebookReelsTabUrls(pageUrl: string): string[] {
+  const desktop = normalizeFacebookUrl(pageUrl);
+  const parsed = new URL(desktop);
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const withoutReels =
+    segments[segments.length - 1]?.toLowerCase() === "reels"
+      ? segments.slice(0, -1)
+      : segments;
+
+  const pageBase = `${parsed.protocol}//${parsed.hostname}${
+    withoutReels.length > 0 ? `/${withoutReels.join("/")}` : ""
+  }`;
+  const pathReels = `${pageBase.replace(/\/+$/, "")}/reels/`;
+
+  const skUrl = new URL(desktop);
+  if (withoutReels.length > 0) {
+    skUrl.pathname = `/${withoutReels.join("/")}`;
+  }
+  skUrl.search = "";
+  skUrl.searchParams.set("sk", "videos_reels");
+  const skVideosReels = skUrl.toString();
+
+  const urls = [pathReels, skVideosReels].filter(
+    (url, index, list) => list.indexOf(url) === index
+  );
+  return urls;
+}
+
+/** Primary Reels tab URL (/{page}/reels/). */
+export function buildFacebookReelsTabUrl(pageUrl: string): string {
+  return buildFacebookReelsTabUrls(pageUrl)[0];
+}

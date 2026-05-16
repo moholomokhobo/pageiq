@@ -144,7 +144,9 @@ export function MonetizationPanel({ intel }: { intel: MonetizationIntel }) {
             Est. monthly views
           </p>
           <p className="mt-0.5 text-xl font-bold text-slate-900 dark:text-white">
-            {intel.estimatedMonthlyViews.toLocaleString()}
+            {intel.estimatedMonthlyViews
+              .toString()
+              .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
           </p>
         </article>
         <article className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-2.5 dark:border-emerald-900/50 dark:bg-emerald-950/30">
