@@ -23,6 +23,11 @@
 - All `pages_database` columns fixed — profile picture, popular posts, monetization, engagement rate (numeric), outlier posts, and full scrape snapshot fields save and load correctly
 - Cache hit returns **complete data** (same shape as live Apify) — profile pictures, popular posts, monetization; incomplete cache (e.g. missing profile URL) forces a fresh scrape and DB update
 - Cached / Live badges on Dashboard, Pages, Discover, and Compare
+- **Real reel view counts** scraped from Facebook Reels tab via `/{page}/reels/` URL format (with `?sk=videos_reels` fallback for profiles)
+- Apify **facebook-posts-scraper** pulls ~**19 reels per page** with real views, likes, comments, shares, thumbnails, captions, post URLs, and dates
+- **`avgViewsPerReel`** calculated from real play counts (not engagement estimates); **`usesRealReelViews`** flag marks live reel metrics in API and Pages UI
+- Per-reel engagement rate `(likes + comments + shares) / views`; outlier reels flagged at **3×+** average reel views; real view counts on Pages post thumbnails
+- **Test confirmed (Zossper):** 54,498 avg views per reel, 7.72% engagement rate
 
 ## Completed (earlier)
 
@@ -36,4 +41,4 @@
 
 1. Stripe payments
 2. Mobile responsive design
-3. Update landing page to match real features
+3. Landing page update

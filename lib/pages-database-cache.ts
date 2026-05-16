@@ -72,7 +72,7 @@ function buildLegacyPopularPosts(
   const views = [
     { label: "Reel", raw: row.avg_views_reel },
     { label: "Image", raw: row.avg_views_image },
-    { label: "Text", raw: row.avg_views_text },
+    { label: "Text", raw: row.avg_engagement_text },
   ].filter((entry) => entry.raw > 0);
 
   return views.slice(0, 3).map((entry, index) => {
@@ -145,7 +145,7 @@ function pageDatabaseRowToLegacyFacebookPageStats(
       : buildLegacyPopularPosts(row, pageId),
     estimatedAvgViewsPerReel: row.avg_views_reel || undefined,
     estimatedAvgViewsPerImage: row.avg_views_image || undefined,
-    estimatedAvgViewsPerText: row.avg_views_text || undefined,
+    estimatedAvgViewsPerText: row.avg_engagement_text || undefined,
   };
 }
 
@@ -164,7 +164,7 @@ export function pageDatabaseRowToFacebookPageStats(
   const outlierPosts = row.outlier_posts ?? [];
   const reelViews = row.avg_views_reel;
   const imageViews = row.avg_views_image;
-  const textViews = row.avg_views_text;
+  const textEngagement = row.avg_engagement_text;
   const profileUrl = row.profile_picture_url?.trim();
 
   return {
@@ -184,7 +184,19 @@ export function pageDatabaseRowToFacebookPageStats(
     popularPosts: popularPosts.length > 0 ? popularPosts : undefined,
     estimatedAvgViewsPerReel: reelViews > 0 ? reelViews : undefined,
     estimatedAvgViewsPerImage: imageViews > 0 ? imageViews : undefined,
-    estimatedAvgViewsPerText: textViews > 0 ? textViews : undefined,
+    estimatedAvgViewsPerText:
+      textEngagement > 0 ? textEngagement : undefined,
+    usesRealReelViews:
+      reelViews > 0 &&
+      popularPosts.some(
+        (post) =>
+          post.viewsRaw > 1_000 &&
+          post.viewsRaw > post.likes + post.comments + post.shares
+      ),
+    usesRealImageViews: imageViews > 0 && imageViews !== reelViews,
+    usesRealTextEngagement:
+      textEngagement > 0 &&
+      (reelViews === 0 || textEngagement < Math.max(1, reelViews * 0.2)),
   };
 }
 

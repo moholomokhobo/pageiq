@@ -148,6 +148,26 @@ export function facebookPageStatsToSearchResponse(
     response.estimatedAvgViewsPerText = Number(stats.estimatedAvgViewsPerText);
   }
 
+  if (stats.usesRealReelViews) {
+    response.usesRealReelViews = true;
+  }
+  if (stats.usesRealImageViews) {
+    response.usesRealImageViews = true;
+  }
+  if (stats.usesRealTextEngagement) {
+    response.usesRealTextEngagement = true;
+  }
+
+  if (stats.reelAvgPeriod) {
+    response.reelAvgPeriod = stats.reelAvgPeriod;
+  }
+  if (stats.imageAvgPeriod) {
+    response.imageAvgPeriod = stats.imageAvgPeriod;
+  }
+  if (stats.textAvgPeriod) {
+    response.textAvgPeriod = stats.textAvgPeriod;
+  }
+
   return response;
 }
 

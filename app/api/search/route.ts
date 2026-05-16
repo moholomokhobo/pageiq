@@ -79,6 +79,7 @@ export async function GET(request: Request) {
       );
       console.log("[search] Cache hit — field types:", {
         profile_picture_url: typeof normalizedRow.profile_picture_url,
+        avg_engagement_text: typeof normalizedRow.avg_engagement_text,
         popular_posts: Array.isArray(normalizedRow.popular_posts)
           ? `array[${normalizedRow.popular_posts.length}]`
           : typeof normalizedRow.popular_posts,

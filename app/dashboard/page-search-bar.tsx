@@ -36,6 +36,11 @@ export type PageResult = {
   estimatedAvgViewsPerImage?: number;
   estimatedAvgViewsPerText?: number;
   usesRealReelViews?: boolean;
+  usesRealImageViews?: boolean;
+  usesRealTextEngagement?: boolean;
+  reelAvgPeriod?: "30d avg" | "recent avg";
+  imageAvgPeriod?: "30d avg" | "recent avg";
+  textAvgPeriod?: "30d avg" | "recent avg";
   fromCache?: boolean;
 };
 

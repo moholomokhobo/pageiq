@@ -4,6 +4,10 @@ import {
   mapFeedPostsToPopularPosts,
   type PopularPost,
 } from "@/lib/pages-list-data";
+import {
+  selectPostsForAverage,
+  type PostAveragePeriodLabel,
+} from "@/lib/post-average-period";
 
 export type ScrapedReel = ScrapedFacebookFeedPost & {
   viewCount: number;
@@ -12,6 +16,7 @@ export type ScrapedReel = ScrapedFacebookFeedPost & {
 export type ReelAnalytics = {
   reels: ScrapedReel[];
   avgViewsPerReel: number;
+  avgPeriodLabel: PostAveragePeriodLabel;
   /** Mean of per-reel (likes + comments + shares) / views × 100 */
   avgEngagementRatePercent: number;
   outlierReels: ScrapedReel[];
@@ -53,10 +58,13 @@ export function analyzeReels(
   const reelsWithViews = reels.filter((reel) => reel.viewCount > 0);
   if (reelsWithViews.length === 0) return null;
 
-  const totalViews = reelsWithViews.reduce((sum, reel) => sum + reel.viewCount, 0);
-  const avgViewsPerReel = Math.round(totalViews / reelsWithViews.length);
+  const { posts: reelsForAvg, periodLabel: avgPeriodLabel } =
+    selectPostsForAverage(reelsWithViews);
 
-  const perReelRates = reelsWithViews.map(reelEngagementRatePercent);
+  const totalViews = reelsForAvg.reduce((sum, reel) => sum + reel.viewCount, 0);
+  const avgViewsPerReel = Math.round(totalViews / reelsForAvg.length);
+
+  const perReelRates = reelsForAvg.map(reelEngagementRatePercent);
   const avgEngagementRatePercent =
     perReelRates.reduce((sum, rate) => sum + rate, 0) / perReelRates.length;
 
@@ -94,6 +102,7 @@ export function analyzeReels(
   return {
     reels,
     avgViewsPerReel,
+    avgPeriodLabel,
     avgEngagementRatePercent,
     outlierReels,
     popularPosts,

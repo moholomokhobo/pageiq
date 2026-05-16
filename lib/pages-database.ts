@@ -23,7 +23,7 @@ export type PageDatabaseRow = {
   followers: number;
   avg_views_reel: number;
   avg_views_image: number;
-  avg_views_text: number;
+  avg_engagement_text: number;
   outlier_score: number;
   monetization_score: number;
   days_since_start: number;
@@ -113,7 +113,8 @@ export function normalizePageDatabaseRow(
     followers: Number(row.followers) || 0,
     avg_views_reel: Number(row.avg_views_reel) || 0,
     avg_views_image: Number(row.avg_views_image) || 0,
-    avg_views_text: Number(row.avg_views_text) || 0,
+    avg_engagement_text:
+      Number(row.avg_engagement_text ?? row.avg_views_text) || 0,
     outlier_score: Number(row.outlier_score) || 0,
     monetization_score: Number(row.monetization_score) || 0,
     days_since_start: Number(row.days_since_start) || 0,
@@ -177,22 +178,29 @@ function estimateDaysSinceStart(stats: FacebookPageStats): number {
 
 function deriveAvgViews(
   stats: FacebookPageStats,
-  kind: "reel" | "image" | "text"
+  kind: "reel" | "image"
 ): number {
   const fromScraper =
     kind === "reel"
       ? stats.estimatedAvgViewsPerReel
-      : kind === "image"
-        ? stats.estimatedAvgViewsPerImage
-        : stats.estimatedAvgViewsPerText;
+      : stats.estimatedAvgViewsPerImage;
 
   if (fromScraper != null && fromScraper > 0) return fromScraper;
 
   const followers = parseCountValue(stats.followerCount);
   const base = Math.max(5_000, Math.round(followers * 0.02));
   if (kind === "reel") return base;
-  if (kind === "image") return Math.round(base * 0.65);
-  return Math.round(base * 0.4);
+  return Math.round(base * 0.65);
+}
+
+function deriveAvgEngagementText(stats: FacebookPageStats): number {
+  if (stats.estimatedAvgViewsPerText != null && stats.estimatedAvgViewsPerText > 0) {
+    return stats.estimatedAvgViewsPerText;
+  }
+
+  const followers = parseCountValue(stats.followerCount);
+  const base = Math.max(5_000, Math.round(followers * 0.02));
+  return Math.round(base * 0.004);
 }
 
 export function engagementMultiplierFromStats(
@@ -231,7 +239,7 @@ export function mapScrapeToPageInsert(
     followers,
     avg_views_reel: deriveAvgViews(stats, "reel"),
     avg_views_image: deriveAvgViews(stats, "image"),
-    avg_views_text: deriveAvgViews(stats, "text"),
+    avg_engagement_text: deriveAvgEngagementText(stats),
     outlier_score: outlierScore,
     monetization_score: monetizationScore,
     days_since_start: estimateDaysSinceStart(stats),

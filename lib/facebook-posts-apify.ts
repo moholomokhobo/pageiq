@@ -1,10 +1,14 @@
-import { buildFacebookReelsTabUrls } from "@/lib/facebook-page-url";
+import {
+  buildFacebookPhotosTabUrl,
+  buildFacebookReelsTabUrls,
+} from "@/lib/facebook-page-url";
 
 const POSTS_ACTOR = "apify~facebook-posts-scraper";
 const APIFY_API_BASE = "https://api.apify.com/v2";
 const POLL_INTERVAL_MS = 3_000;
 const MAX_WAIT_MS = 90_000;
 export const REELS_FETCH_LIMIT = 20;
+export const PHOTOS_FETCH_LIMIT = 20;
 
 export type FeedPostType = "reel" | "image" | "text";
 
@@ -248,12 +252,19 @@ function extractThumbnail(record: ApifyFacebookPostRecord): string | undefined {
   return undefined;
 }
 
-function mapPostRecord(record: ApifyFacebookPostRecord): ScrapedFacebookFeedPost | null {
-  const text =
+function mapPostRecord(
+  record: ApifyFacebookPostRecord,
+  options?: { allowEmptyCaption?: boolean }
+): ScrapedFacebookFeedPost | null {
+  let text =
     record.text?.trim() ||
     record.message?.trim() ||
     record.postText?.trim() ||
     "";
+
+  if (!text && options?.allowEmptyCaption) {
+    text = "Photo";
+  }
 
   if (!text) return null;
 
@@ -294,7 +305,8 @@ function mapPostRecord(record: ApifyFacebookPostRecord): ScrapedFacebookFeedPost
 async function scrapePostsFromUrl(
   pageUrl: string,
   apiKey: string,
-  resultsLimit: number
+  resultsLimit: number,
+  mapOptions?: { allowEmptyCaption?: boolean }
 ): Promise<ScrapedFacebookFeedPost[]> {
   const runId = await startApifyRun(pageUrl, apiKey, resultsLimit);
   if (!runId) return [];
@@ -304,7 +316,7 @@ async function scrapePostsFromUrl(
 
   const items = await fetchDatasetItems(datasetId, apiKey);
   return items
-    .map(mapPostRecord)
+    .map((item) => mapPostRecord(item, mapOptions))
     .filter((post): post is ScrapedFacebookFeedPost => post !== null)
     .sort((a, b) => b.postedAtDate.getTime() - a.postedAtDate.getTime())
     .slice(0, resultsLimit);
@@ -382,4 +394,55 @@ export async function scrapeFacebookPageReels(
   }
 
   return [];
+}
+
+function normalizeScrapedPhotoPosts(
+  posts: ScrapedFacebookFeedPost[]
+): ScrapedFacebookFeedPost[] {
+  return posts
+    .map((post) => ({
+      ...post,
+      postType: "image" as const,
+    }))
+    .filter(
+      (post) =>
+        post.postType === "image" ||
+        post.thumbnailUrl ||
+        post.postUrl?.includes("/photo") ||
+        post.likes + post.comments + post.shares > 0
+    );
+}
+
+/**
+ * Scrapes the page Photos tab at /{page}/photos_by/.
+ */
+export async function scrapeFacebookPagePhotos(
+  pageUrl: string,
+  apiKey: string,
+  resultsLimit = PHOTOS_FETCH_LIMIT
+): Promise<ScrapedFacebookFeedPost[]> {
+  const photosTabUrl = buildFacebookPhotosTabUrl(pageUrl);
+
+  console.log("[Apify Photos] Base page URL:", pageUrl);
+  console.log(
+    "[Apify Photos] Passing URL to facebook-posts-scraper:",
+    photosTabUrl
+  );
+
+  const posts = await scrapePostsFromUrl(photosTabUrl, apiKey, resultsLimit, {
+    allowEmptyCaption: true,
+  });
+  const photos = normalizeScrapedPhotoPosts(posts);
+
+  if (photos.length > 0) {
+    console.log(
+      "[Apify Photos] Scrape succeeded with URL:",
+      photosTabUrl,
+      `(${photos.length} photos)`
+    );
+  } else {
+    console.log("[Apify Photos] No photos returned from URL:", photosTabUrl);
+  }
+
+  return photos;
 }

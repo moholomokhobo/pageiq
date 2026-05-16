@@ -1,15 +1,20 @@
 import { calculateEstimatedViewsFromFeedPosts } from "@/lib/estimated-views-from-posts";
 import {
+  buildFacebookPhotosTabUrl,
+  buildFacebookReelsTabUrls,
+  resolveFacebookPageUrls,
+} from "@/lib/facebook-page-url";
+import {
+  PHOTOS_FETCH_LIMIT,
   REELS_FETCH_LIMIT,
+  scrapeFacebookPagePhotos,
   scrapeFacebookPagePosts,
   scrapeFacebookPageReels,
   type ScrapedFacebookFeedPost,
 } from "@/lib/facebook-posts-apify";
+import { analyzePhotos, logApifyPhotoSample } from "@/lib/photo-analytics";
 import { analyzeReels, logApifyReelSample } from "@/lib/reel-analytics";
-import {
-  buildFacebookReelsTabUrls,
-  resolveFacebookPageUrls,
-} from "@/lib/facebook-page-url";
+import { analyzeTextPosts } from "@/lib/text-analytics";
 import {
   extractCountryFromApifyRecord,
   pickApifyLocationFields,
@@ -525,6 +530,82 @@ function popularPostsFromApifyPageRecord(
   return mapFeedPostsToPopularPosts(feedPosts, livePageId(searchQuery));
 }
 
+function applyPhotoAnalyticsToStats(
+  stats: FacebookPageStats,
+  analytics: NonNullable<ReturnType<typeof analyzePhotos>>
+): FacebookPageStats {
+  return {
+    ...stats,
+    estimatedAvgViewsPerImage: analytics.avgEngagementPerImage,
+    usesRealImageViews: true,
+    imageAvgPeriod: analytics.avgPeriodLabel,
+  };
+}
+
+function applyTextAnalyticsToStats(
+  stats: FacebookPageStats,
+  analytics: NonNullable<ReturnType<typeof analyzeTextPosts>>
+): FacebookPageStats {
+  return {
+    ...stats,
+    estimatedAvgViewsPerText: analytics.avgEngagementPerTextPost,
+    usesRealTextEngagement: true,
+    textAvgPeriod: analytics.avgPeriodLabel,
+  };
+}
+
+function enrichStatsFromFeedPosts(
+  stats: FacebookPageStats,
+  feedPosts: ScrapedFacebookFeedPost[]
+): FacebookPageStats {
+  const textAnalytics = analyzeTextPosts(feedPosts);
+  let next = stats;
+
+  if (textAnalytics) {
+    console.log("[Apify] Text post analytics:", {
+      avgEngagementPerTextPost: textAnalytics.avgEngagementPerTextPost,
+      avgPeriodLabel: textAnalytics.avgPeriodLabel,
+      textPostCount: textAnalytics.posts.length,
+    });
+    next = applyTextAnalyticsToStats(next, textAnalytics);
+  }
+
+  const postsForViewEstimates = feedPosts.filter((post) => {
+    if (post.postType === "text") return false;
+    if (post.postType === "image" && next.usesRealImageViews) return false;
+    return true;
+  });
+
+  if (postsForViewEstimates.length === 0) return next;
+
+  const otherEstimates = calculateEstimatedViewsFromFeedPosts(postsForViewEstimates);
+  if (!otherEstimates) return next;
+
+  return {
+    ...next,
+    ...(otherEstimates.estimatedAvgViewsPerImage != null &&
+    !next.usesRealImageViews
+      ? {
+          estimatedAvgViewsPerImage: otherEstimates.estimatedAvgViewsPerImage,
+          imageAvgPeriod: otherEstimates.imageAvgPeriod,
+        }
+      : {}),
+    ...(!next.usesRealTextEngagement &&
+    otherEstimates.estimatedAvgViewsPerText != null
+      ? {
+          estimatedAvgViewsPerText: otherEstimates.estimatedAvgViewsPerText,
+          textAvgPeriod: otherEstimates.textAvgPeriod,
+        }
+      : {}),
+    ...(otherEstimates.estimatedAvgViewsPerReel != null && !next.usesRealReelViews
+      ? {
+          estimatedAvgViewsPerReel: otherEstimates.estimatedAvgViewsPerReel,
+          reelAvgPeriod: otherEstimates.reelAvgPeriod,
+        }
+      : {}),
+  };
+}
+
 function applyReelAnalyticsToStats(
   stats: FacebookPageStats,
   analytics: NonNullable<ReturnType<typeof analyzeReels>>
@@ -560,6 +641,7 @@ function applyReelAnalyticsToStats(
     outlierPosts: mergedOutlierPosts,
     estimatedAvgViewsPerReel: analytics.avgViewsPerReel,
     usesRealReelViews: true,
+    reelAvgPeriod: analytics.avgPeriodLabel,
   };
 }
 
@@ -573,6 +655,8 @@ async function attachPopularPosts(
   const pageId = livePageId(searchQuery);
 
   let reelPosts: ScrapedFacebookFeedPost[] = [];
+  let photoPosts: ScrapedFacebookFeedPost[] = [];
+
   try {
     const reelsTabUrls = buildFacebookReelsTabUrls(pageUrl);
     console.log(
@@ -597,16 +681,50 @@ async function attachPopularPosts(
     );
   }
 
+  try {
+    const photosTabUrl = buildFacebookPhotosTabUrl(pageUrl);
+    console.log(
+      "[scrapeFacebookPageLight] Photos tab URL to scrape:",
+      photosTabUrl
+    );
+
+    photoPosts = await scrapeFacebookPagePhotos(
+      pageUrl,
+      apiKey,
+      PHOTOS_FETCH_LIMIT
+    );
+    logApifyPhotoSample(`Photos tab · ${pageUrl}`, photoPosts);
+  } catch (err) {
+    console.warn(
+      "[attachPopularPosts] Photos tab scrape failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
+
   const reelAnalytics = analyzeReels(reelPosts, pageId);
+  const photoAnalytics = analyzePhotos(photoPosts);
+
+  if (photoAnalytics) {
+    console.log("[Apify] Photo analytics:", {
+      avgEngagementPerImage: photoAnalytics.avgEngagementPerImage,
+      avgPeriodLabel: photoAnalytics.avgPeriodLabel,
+      photoCount: photoAnalytics.photos.length,
+    });
+  }
+
   if (reelAnalytics) {
     console.log("[Apify] Reel analytics:", {
       avgViewsPerReel: reelAnalytics.avgViewsPerReel,
+      avgPeriodLabel: reelAnalytics.avgPeriodLabel,
       avgEngagementRatePercent: reelAnalytics.avgEngagementRatePercent,
       outlierReelCount: reelAnalytics.outlierReels.length,
       popularPostsCount: reelAnalytics.popularPosts.length,
     });
 
     let next = applyReelAnalyticsToStats(stats, reelAnalytics);
+    if (photoAnalytics) {
+      next = applyPhotoAnalyticsToStats(next, photoAnalytics);
+    }
 
     try {
       const feedPosts = await scrapeFacebookPagePosts(
@@ -614,26 +732,29 @@ async function attachPopularPosts(
         apiKey,
         POSTS_FETCH_LIMIT
       );
-      const nonReelPosts = feedPosts.filter((post) => post.postType !== "reel");
-      const otherEstimates = calculateEstimatedViewsFromFeedPosts(nonReelPosts);
-      if (otherEstimates) {
-        next = {
-          ...next,
-          ...(otherEstimates.estimatedAvgViewsPerImage != null
-            ? {
-                estimatedAvgViewsPerImage:
-                  otherEstimates.estimatedAvgViewsPerImage,
-              }
-            : {}),
-          ...(otherEstimates.estimatedAvgViewsPerText != null
-            ? {
-                estimatedAvgViewsPerText: otherEstimates.estimatedAvgViewsPerText,
-              }
-            : {}),
-        };
-      }
+      next = enrichStatsFromFeedPosts(
+        next,
+        feedPosts.filter((post) => post.postType !== "reel")
+      );
     } catch {
       // reel metrics already applied
+    }
+
+    return next;
+  }
+
+  if (photoAnalytics) {
+    let next = applyPhotoAnalyticsToStats(stats, photoAnalytics);
+
+    try {
+      const feedPosts = await scrapeFacebookPagePosts(
+        pageUrl,
+        apiKey,
+        POSTS_FETCH_LIMIT
+      );
+      next = enrichStatsFromFeedPosts(next, feedPosts);
+    } catch {
+      // photo metrics already applied
     }
 
     return next;
@@ -664,15 +785,14 @@ async function attachPopularPosts(
       const feedReelAnalytics = analyzeReels(reelsFromFeed, pageId);
       if (feedReelAnalytics) {
         let next = applyReelAnalyticsToStats(stats, feedReelAnalytics);
-        const estimates = calculateEstimatedViewsFromFeedPosts(
+        return enrichStatsFromFeedPosts(
+          next,
           feedPosts.filter((post) => post.postType !== "reel")
         );
-        return { ...next, ...estimates };
       }
     }
 
     if (feedPosts.length > 0) {
-      const estimates = calculateEstimatedViewsFromFeedPosts(feedPosts);
       const popularPosts = mapFeedPostsToPopularPosts(feedPosts, pageId);
 
       console.log("[Apify] popular_posts from posts scraper:", {
@@ -685,11 +805,10 @@ async function attachPopularPosts(
         })),
       });
 
-      return {
-        ...stats,
-        popularPosts,
-        ...estimates,
-      };
+      return enrichStatsFromFeedPosts(
+        { ...stats, popularPosts },
+        feedPosts
+      );
     }
   } catch (err) {
     console.warn(
@@ -756,6 +875,10 @@ async function scrapeWithApify(
     popularPostsCount: enriched.popularPosts?.length ?? 0,
     avgViewsPerReel: enriched.estimatedAvgViewsPerReel ?? null,
     usesRealReelViews: enriched.usesRealReelViews ?? false,
+    usesRealImageViews: enriched.usesRealImageViews ?? false,
+    usesRealTextEngagement: enriched.usesRealTextEngagement ?? false,
+    avgEngagementPerImage: enriched.estimatedAvgViewsPerImage ?? null,
+    avg_engagement_text: enriched.estimatedAvgViewsPerText ?? null,
     engagementRate: enriched.engagementRate,
     category,
   });

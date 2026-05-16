@@ -25,6 +25,7 @@ import {
   type PopularPost,
 } from "@/lib/pages-list-data";
 import { normalizePageUrl } from "@/lib/page-url";
+import { simulatedMomTrend, type MomTrend } from "@/lib/stat-mom-trend";
 import { outlierTrafficLevel, trafficBarClass } from "@/lib/traffic-light";
 import Link from "next/link";
 import { FormEvent, useCallback, useMemo, useState } from "react";
@@ -36,6 +37,7 @@ const DISPLAY_COUNT = 6;
 const SORT_COLUMNS: { key: PageSortKey; label: string }[] = [
   { key: "followers", label: "Followers" },
   { key: "avgViewsPerReel", label: "Avg Views Per Reel" },
+  { key: "avgEngagementPerTextPost", label: "Avg Engagement Per Text Post" },
   { key: "daysSinceStart", label: "Days Since Start" },
   { key: "numberOfPosts", label: "Number of Posts" },
   { key: "outlierScore", label: "Outlier Score" },
@@ -116,13 +118,13 @@ function ImageIcon() {
   );
 }
 
-function TextPostIcon() {
+function EngagementIcon() {
   return (
     <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
       />
     </svg>
   );
@@ -136,17 +138,35 @@ function TrendIcon() {
   );
 }
 
+function MomTrendIndicator({ trend }: { trend: MomTrend }) {
+  return (
+    <p
+      className={`mt-0.5 text-[10px] font-medium tabular-nums ${
+        trend.positive
+          ? "text-emerald-600 dark:text-emerald-400"
+          : "text-red-600 dark:text-red-400"
+      }`}
+    >
+      {trend.label}
+    </p>
+  );
+}
+
 function StatTile({
   icon,
   label,
   value,
   estimateLabel,
+  periodSubtitle,
+  momTrend,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   estimateLabel?: string;
+  periodSubtitle?: string;
+  momTrend?: MomTrend;
   children?: React.ReactNode;
 }) {
   return (
@@ -158,6 +178,12 @@ function StatTile({
         </span>
       </div>
       <div className="mt-2">{value}</div>
+      {periodSubtitle ? (
+        <p className="mt-0.5 text-[9px] font-medium text-slate-400 dark:text-zinc-500">
+          {periodSubtitle}
+        </p>
+      ) : null}
+      {momTrend ? <MomTrendIndicator trend={momTrend} /> : null}
       {estimateLabel ? (
         <p className="mt-0.5 text-[9px] font-medium text-slate-400 dark:text-zinc-500">
           {estimateLabel}
@@ -313,6 +339,12 @@ function PageCard({
   const barPercent = `${Math.min(100, Math.max(12, page.outlierScore))}%`;
   const analyzeHref = `/dashboard?q=${encodeURIComponent(page.searchQuery)}`;
   const pageFacebookUrl = normalizePageUrl(page.searchQuery);
+  const momReel = simulatedMomTrend(page.outlierScore, "reel", page.id);
+  const momImage = simulatedMomTrend(page.outlierScore, "image", page.id);
+  const momText = simulatedMomTrend(page.outlierScore, "text", page.id);
+  const momDays = simulatedMomTrend(page.outlierScore, "days", page.id);
+  const momPosts = simulatedMomTrend(page.outlierScore, "posts", page.id);
+  const momOutlier = simulatedMomTrend(page.outlierScore, "outlier", page.id);
 
   const handleShare = async () => {
     const url = `${window.location.origin}/dashboard?q=${encodeURIComponent(page.searchQuery)}`;
@@ -419,7 +451,15 @@ function PageCard({
             <StatTile
               icon={<EyeIcon />}
               label="Avg Views Per Reel"
-              estimateLabel={page.avgViewsPerReelEstimated ? "Est." : undefined}
+              periodSubtitle={page.reelAvgPeriod}
+              momTrend={momReel}
+              estimateLabel={
+                page.usesRealReelViews
+                  ? undefined
+                  : page.avgViewsPerReelEstimated
+                    ? "Est."
+                    : undefined
+              }
               value={
                 <p className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
                   {page.avgViewsPerReel}
@@ -428,29 +468,37 @@ function PageCard({
             />
             <StatTile
               icon={<ImageIcon />}
-              label="Avg Views Per Image"
-              estimateLabel={page.avgViewsPerImageEstimated ? "Est." : undefined}
+              label="Avg Engagement Per Image"
+              periodSubtitle={page.imageAvgPeriod}
+              momTrend={momImage}
+              estimateLabel={
+                page.usesRealImageViews
+                  ? undefined
+                  : page.avgEngagementPerImageEstimated
+                    ? "Est."
+                    : undefined
+              }
               value={
                 <p className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
-                  {page.avgViewsPerImage}
+                  {page.avgEngagementPerImage}
                 </p>
               }
             />
             <StatTile
-              icon={<TextPostIcon />}
-              label="Avg Views Per Text Post"
-              estimateLabel={
-                page.avgViewsPerTextPostEstimated ? "Est." : undefined
-              }
+              icon={<EngagementIcon />}
+              label="Avg Engagement Per Text Post"
+              periodSubtitle={page.textAvgPeriod}
+              momTrend={momText}
               value={
                 <p className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
-                  {page.avgViewsPerTextPost}
+                  {page.avgEngagementPerTextPost}
                 </p>
               }
             />
             <StatTile
               icon={<CalendarIcon />}
               label="Days Since Start"
+              momTrend={momDays}
               value={
                 <p className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
                   {page.daysSinceStart.toString()}
@@ -460,6 +508,7 @@ function PageCard({
             <StatTile
               icon={<UploadIcon />}
               label="Posts"
+              momTrend={momPosts}
               value={
                 <p className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
                   {page.numberOfPosts.toString()}
@@ -469,6 +518,7 @@ function PageCard({
             <StatTile
               icon={<TrendIcon />}
               label="Outlier Score"
+              momTrend={momOutlier}
               value={
                 <p className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">
                   {page.outlierMultiplier}
@@ -632,13 +682,21 @@ export function PagesClient() {
             ...(data.popularPosts?.length
               ? { popularPosts: data.popularPosts }
               : {}),
-            ...(hasEstimatedViews
+            ...(hasEstimatedViews ||
+            data.usesRealReelViews ||
+            data.usesRealImageViews ||
+            data.usesRealTextEngagement
               ? {
                   estimatedAvgViews: {
                     reel: data.estimatedAvgViewsPerReel,
                     image: data.estimatedAvgViewsPerImage,
                     text: data.estimatedAvgViewsPerText,
-                    reelFromRealViews: data.usesRealReelViews,
+                    reelFromRealViews: data.usesRealReelViews === true,
+                    imageFromRealViews: data.usesRealImageViews === true,
+                    textFromRealEngagement: data.usesRealTextEngagement === true,
+                    reelAvgPeriod: data.reelAvgPeriod,
+                    imageAvgPeriod: data.imageAvgPeriod,
+                    textAvgPeriod: data.textAvgPeriod,
                   },
                 }
               : {}),
@@ -769,7 +827,7 @@ export function PagesClient() {
           })}
         </div>
 
-        <div className="grid grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))] gap-3 border-t border-slate-100 bg-slate-50/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+        <div className="grid grid-cols-[minmax(0,2fr)_repeat(6,minmax(0,1fr))] gap-3 border-t border-slate-100 bg-slate-50/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
           <span>Page</span>
           {SORT_COLUMNS.map((col) => (
             <button

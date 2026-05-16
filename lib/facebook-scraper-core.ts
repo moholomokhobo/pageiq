@@ -1,5 +1,6 @@
 import type { MonetizationIntel } from "@/lib/cpm-intelligence";
 import type { PopularPost } from "@/lib/pages-list-data";
+import type { PostAveragePeriodLabel } from "@/lib/post-average-period";
 import {
   calculateMonetizationIntel,
   inferContentTypeFromPostTypes,
@@ -53,6 +54,12 @@ export type FacebookPageStats = {
   estimatedAvgViewsPerText?: number;
   /** True when avg_views_reel is from Apify play counts on the Reels tab */
   usesRealReelViews?: boolean;
+  usesRealImageViews?: boolean;
+  /** True when avg text metric is from real feed post engagement */
+  usesRealTextEngagement?: boolean;
+  reelAvgPeriod?: PostAveragePeriodLabel;
+  imageAvgPeriod?: PostAveragePeriodLabel;
+  textAvgPeriod?: PostAveragePeriodLabel;
 };
 
 export function formatCount(value: number): string {

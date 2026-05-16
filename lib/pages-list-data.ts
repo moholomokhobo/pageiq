@@ -1,5 +1,6 @@
 import { trendingPages, type TrendingPage } from "@/lib/discover-data";
 import type { ScrapedFacebookFeedPost } from "@/lib/facebook-posts-apify";
+import type { PostAveragePeriodLabel } from "@/lib/post-average-period";
 import { calculateMonetizationIntel } from "@/lib/cpm-intelligence";
 import { parseCountValue } from "@/lib/metrics";
 import { calculateOutlierScoreFromStrings } from "@/lib/outlier-score";
@@ -21,6 +22,7 @@ export type PageFilterTab = (typeof PAGE_FILTER_TABS)[number];
 export type PageSortKey =
   | "followers"
   | "avgViewsPerReel"
+  | "avgEngagementPerTextPost"
   | "daysSinceStart"
   | "numberOfPosts"
   | "outlierScore";
@@ -78,13 +80,12 @@ export type PageListItem = {
   followersRaw: number;
   avgViewsPerReel: string;
   avgViewsPerReelRaw: number;
-  avgViewsPerImage: string;
-  avgViewsPerImageRaw: number;
-  avgViewsPerTextPost: string;
-  avgViewsPerTextPostRaw: number;
+  avgEngagementPerImage: string;
+  avgEngagementPerImageRaw: number;
+  avgEngagementPerTextPost: string;
+  avgEngagementPerTextPostRaw: number;
   avgViewsPerReelEstimated?: boolean;
-  avgViewsPerImageEstimated?: boolean;
-  avgViewsPerTextPostEstimated?: boolean;
+  avgEngagementPerImageEstimated?: boolean;
   daysSinceStart: number;
   numberOfPosts: number;
   outlierScore: number;
@@ -97,6 +98,15 @@ export type PageListItem = {
   /** Set only when country is known from a live scrape */
   country?: string;
   fromCache?: boolean;
+  /** True when avg reel views come from Apify Reels tab play counts */
+  usesRealReelViews?: boolean;
+  /** True when avg image engagement comes from Apify Photos tab data */
+  usesRealImageViews?: boolean;
+  /** True when avg text engagement comes from real feed post data */
+  usesRealTextEngagement?: boolean;
+  reelAvgPeriod?: PostAveragePeriodLabel;
+  imageAvgPeriod?: PostAveragePeriodLabel;
+  textAvgPeriod?: PostAveragePeriodLabel;
 };
 
 function hashSeed(id: string) {
@@ -263,6 +273,13 @@ export type EstimatedAvgViewsInput = {
   text?: number;
   /** When true, avg reel views come from real Apify play counts (not estimated). */
   reelFromRealViews?: boolean;
+  /** When true, avg image views come from real Apify Photos tab data. */
+  imageFromRealViews?: boolean;
+  /** When true, avg text engagement comes from real feed post data. */
+  textFromRealEngagement?: boolean;
+  reelAvgPeriod?: PostAveragePeriodLabel;
+  imageAvgPeriod?: PostAveragePeriodLabel;
+  textAvgPeriod?: PostAveragePeriodLabel;
 };
 
 export function enrichTrendingPage(
@@ -294,11 +311,11 @@ export function enrichTrendingPage(
     (12_000 + (seed % 180) * 2_400) *
       (1 + parseCountValue(page.engagementRate.replace("%", "")) / 20)
   );
-  const avgViewsPerImageRaw = Math.round(
-    avgViewsPerReelRaw * (0.62 + (seed % 24) / 100)
+  const avgEngagementPerImageRaw = Math.round(
+    avgViewsPerReelRaw * (0.004 + (seed % 20) / 5_000)
   );
-  const avgViewsPerTextPostRaw = Math.round(
-    avgViewsPerReelRaw * (0.38 + (seed % 18) / 100)
+  const avgEngagementPerTextPostRaw = Math.round(
+    avgViewsPerReelRaw * (0.003 + (seed % 12) / 4_000)
   );
 
   const reelEstimate = options?.estimatedAvgViews?.reel;
@@ -308,9 +325,13 @@ export function enrichTrendingPage(
   const resolvedReelRaw =
     reelEstimate != null && reelEstimate > 0 ? reelEstimate : avgViewsPerReelRaw;
   const resolvedImageRaw =
-    imageEstimate != null && imageEstimate > 0 ? imageEstimate : avgViewsPerImageRaw;
+    imageEstimate != null && imageEstimate > 0
+      ? imageEstimate
+      : avgEngagementPerImageRaw;
   const resolvedTextRaw =
-    textEstimate != null && textEstimate > 0 ? textEstimate : avgViewsPerTextPostRaw;
+    textEstimate != null && textEstimate > 0
+      ? textEstimate
+      : avgEngagementPerTextPostRaw;
 
   const daysSinceStart = 90 + (seed % 2_400);
   const numberOfPosts = 48 + (seed % 820);
@@ -333,18 +354,18 @@ export function enrichTrendingPage(
     followersRaw,
     avgViewsPerReel: formatViews(resolvedReelRaw),
     avgViewsPerReelRaw: resolvedReelRaw,
-    avgViewsPerImage: formatViews(resolvedImageRaw),
-    avgViewsPerImageRaw: resolvedImageRaw,
-    avgViewsPerTextPost: formatViews(resolvedTextRaw),
-    avgViewsPerTextPostRaw: resolvedTextRaw,
+    avgEngagementPerImage: formatViews(resolvedImageRaw),
+    avgEngagementPerImageRaw: resolvedImageRaw,
+    avgEngagementPerTextPost: formatViews(resolvedTextRaw),
+    avgEngagementPerTextPostRaw: resolvedTextRaw,
     avgViewsPerReelEstimated:
       reelEstimate != null &&
       reelEstimate > 0 &&
       !options?.estimatedAvgViews?.reelFromRealViews,
-    avgViewsPerImageEstimated:
-      imageEstimate != null && imageEstimate > 0,
-    avgViewsPerTextPostEstimated:
-      textEstimate != null && textEstimate > 0,
+    avgEngagementPerImageEstimated:
+      imageEstimate != null &&
+      imageEstimate > 0 &&
+      !options?.estimatedAvgViews?.imageFromRealViews,
     daysSinceStart,
     numberOfPosts,
     outlierScore,
@@ -358,6 +379,17 @@ export function enrichTrendingPage(
     source: page.source,
     country: scrapedCountry,
     fromCache: options?.fromCache ?? page.fromCache,
+    usesRealReelViews: Boolean(options?.estimatedAvgViews?.reelFromRealViews),
+    usesRealImageViews: Boolean(options?.estimatedAvgViews?.imageFromRealViews),
+    usesRealTextEngagement: Boolean(
+      options?.estimatedAvgViews?.textFromRealEngagement
+    ),
+    reelAvgPeriod:
+      options?.estimatedAvgViews?.reelAvgPeriod ?? "recent avg",
+    imageAvgPeriod:
+      options?.estimatedAvgViews?.imageAvgPeriod ?? "recent avg",
+    textAvgPeriod:
+      options?.estimatedAvgViews?.textAvgPeriod ?? "recent avg",
   };
 }
 
@@ -400,6 +432,10 @@ export function sortPageList(
     const values: Record<PageSortKey, [number, number]> = {
       followers: [a.followersRaw, b.followersRaw],
       avgViewsPerReel: [a.avgViewsPerReelRaw, b.avgViewsPerReelRaw],
+      avgEngagementPerTextPost: [
+        a.avgEngagementPerTextPostRaw,
+        b.avgEngagementPerTextPostRaw,
+      ],
       daysSinceStart: [a.daysSinceStart, b.daysSinceStart],
       numberOfPosts: [a.numberOfPosts, b.numberOfPosts],
       outlierScore: [a.outlierScore, b.outlierScore],

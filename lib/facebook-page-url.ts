@@ -137,3 +137,19 @@ export function buildFacebookReelsTabUrls(pageUrl: string): string[] {
 export function buildFacebookReelsTabUrl(pageUrl: string): string {
   return buildFacebookReelsTabUrls(pageUrl)[0];
 }
+
+/** Photos tab URL (/{page}/photos_by/). */
+export function buildFacebookPhotosTabUrl(pageUrl: string): string {
+  const desktop = normalizeFacebookUrl(pageUrl);
+  const parsed = new URL(desktop);
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const withoutPhotosTab =
+    segments[segments.length - 1]?.toLowerCase() === "photos_by"
+      ? segments.slice(0, -1)
+      : segments;
+
+  const pageBase = `${parsed.protocol}//${parsed.hostname}${
+    withoutPhotosTab.length > 0 ? `/${withoutPhotosTab.join("/")}` : ""
+  }`;
+  return `${pageBase.replace(/\/+$/, "")}/photos_by/`;
+}
